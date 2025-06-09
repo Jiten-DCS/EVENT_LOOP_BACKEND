@@ -1,3 +1,4 @@
+const Booking = require('../models/Booking');
 const Review = require('../models/Review');
 const Service = require('../models/Service');
 const User = require('../models/User');
@@ -141,7 +142,7 @@ exports.deleteReview = async (req, res, next) => {
       return next(new ErrorResponse('Not authorized to delete this review', 401));
     }
 
-    await review.remove();
+    await review.deleteOne();
 
     res.status(200).json({
       success: true,

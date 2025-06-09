@@ -14,6 +14,7 @@ exports.getVendors = async (req, res, next) => {
       isApproved: true 
     }).select('-password');
 
+
     res.status(200).json({
       success: true,
       count: vendors.length,
@@ -146,6 +147,24 @@ exports.createOffer = async (req, res, next) => {
       return next(new ErrorResponse('Not authorized to create offer for this service', 401));
     }
 
+    // Deactivate all existing offers for this service
+    const deactivatedOffers = await Offer.updateMany(
+      { 
+        service: service,
+        vendor: req.user.id,
+        isActive: true 
+      },
+      { 
+        isActive: false,
+        updatedAt: new Date()
+      }
+    );
+
+    if (deactivatedOffers.modifiedCount > 0) {
+      console.log(`Deactivated ${deactivatedOffers.modifiedCount} existing offer(s) for service ${service}`);
+    }
+
+    // Create the new offer
     const offer = await Offer.create({
       vendor: req.user.id,
       service,
@@ -155,11 +174,15 @@ exports.createOffer = async (req, res, next) => {
       originalPrice,
       discountedPrice,
       validFrom,
-      validTill
+      validTill,
+      isActive: true // Explicitly set as active
     });
 
     res.status(201).json({
       success: true,
+      message: deactivatedOffers.modifiedCount > 0 
+        ? `Previous ${deactivatedOffers.modifiedCount} offer(s) deactivated and new offer created` 
+        : 'Offer created successfully',
       data: offer
     });
   } catch (err) {
@@ -207,6 +230,26 @@ exports.updateOffer = async (req, res, next) => {
       req.body.bannerImage = req.file.path;
     }
 
+    // Manual validation for date fields
+    if (req.body.validTill || req.body.validFrom) {
+      const validFrom = req.body.validFrom ? new Date(req.body.validFrom) : offer.validFrom;
+      const validTill = req.body.validTill ? new Date(req.body.validTill) : offer.validTill;
+      
+      if (validTill <= validFrom) {
+        return next(new ErrorResponse('End date must be after start date', 400));
+      }
+    }
+
+    // Manual validation for price fields
+    if (req.body.discountedPrice || req.body.originalPrice) {
+      const originalPrice = req.body.originalPrice || offer.originalPrice;
+      const discountedPrice = req.body.discountedPrice || offer.discountedPrice;
+      
+      if (discountedPrice >= originalPrice) {
+        return next(new ErrorResponse('Discounted price must be less than original price', 400));
+      }
+    }
+
     offer = await Offer.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
       runValidators: true
@@ -237,7 +280,7 @@ exports.deleteOffer = async (req, res, next) => {
       return next(new ErrorResponse('Not authorized to delete this offer', 401));
     }
 
-    await offer.remove();
+    await offer.deleteOne();
 
     res.status(200).json({
       success: true,

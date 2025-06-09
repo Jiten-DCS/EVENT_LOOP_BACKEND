@@ -16,6 +16,11 @@ const userSchema = new mongoose.Schema({
     lowercase: true,
     validate: [validator.isEmail, 'Please provide a valid email']
   },
+  phoneNumber: {
+    type: String,
+    required: [true, 'Please provide a phone number'],
+    unique: true
+  },
   password: {
     type: String,
     required: [true, 'Please provide a password'],
@@ -72,5 +77,8 @@ userSchema.pre('save', async function(next) {
 userSchema.methods.comparePassword = async function(candidatePassword, userPassword) {
   return await bcrypt.compare(candidatePassword, userPassword);
 };
+
+// Create text indexes for better search functionality on name, email, and description
+userSchema.index({ name: 'text', email: 'text', description: 'text', phoneNumber: 'text' });
 
 module.exports = mongoose.model('User', userSchema);

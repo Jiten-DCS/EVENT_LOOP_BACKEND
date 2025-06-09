@@ -240,7 +240,7 @@ exports.deleteService = async (req, res, next) => {
 
     await Promise.all(deletePromises);
 
-    await service.remove();
+    await service.deleteOne();
 
     // Remove service from vendor's services array
     await User.findByIdAndUpdate(req.user.id, {
