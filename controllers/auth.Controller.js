@@ -3,6 +3,7 @@ const ErrorResponse = require('../utils/errorResponse');
 const { createSendToken } = require('../config/jwt');
 const sendEmail = require('../utils/emailSender');
 const { v2: cloudinary } = require('cloudinary');
+const crypto = require('crypto');
 
 // @desc    Register user
 // @route   POST /api/auth/register
@@ -42,15 +43,38 @@ exports.register = async (req, res, next) => {
       isApproved: role === 'vendor' ? false : true
     });
 
+    // Send welcome email to the new user
+    try {
+      await sendEmail({
+        email: user.email,
+        subject: 'Welcome to Event Loop!',
+        template: 'welcomeEmail',
+        templateData: {
+          name: user.name,
+          // You might want to use environment variables for these links
+          appLink: process.env.APP_URL || 'http://localhost:3000/dashboard',
+          unsubscribeLink: process.env.APP_URL ? `${process.env.APP_URL}/unsubscribe` : 'http://localhost:3000/unsubscribe'
+        }
+      });
+    } catch (emailError) {
+      console.error('Failed to send welcome email:', emailError);
+      // Decide if registration should fail if email sending fails.
+      // For now, we'll log the error and continue.
+    }
+
     // If vendor, notify admin
     if (role === 'vendor') {
-      const message = `A new vendor ${name} has registered and is waiting for approval.`;
-      console.log(message)
-      await sendEmail({
-        email: process.env.ADMIN_EMAIL,
-        subject: 'New Vendor Registration',
-        message
-      });
+      const message = `A new vendor ${user.name} has registered and is waiting for approval. Please review their application in the admin panel.`;
+      // console.log(message) // Logging to console might not be needed if email is sent
+      try {
+        await sendEmail({
+          email: process.env.ADMIN_EMAIL,
+          subject: 'New Vendor Registration - Action Required',
+          message // This will be plain text, or you can create a template for admin notifications too
+        });
+      } catch (adminEmailError) {
+        console.error('Failed to send new vendor notification to admin:', adminEmailError);
+      }
     }
 
     createSendToken(user, 201, res);
@@ -406,6 +430,99 @@ exports.updateVendorApproval = async (req, res, next) => {
       success: true,
       data: user
     });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// @desc    Forgot password - Send OTP to email
+// @route   POST /api/auth/forgot-password
+// @access  Public
+exports.forgotPassword = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    // 1) Get user based on POSTed email
+    const user = await User.findOne({ email });
+    if (!user) {
+      return next(new ErrorResponse('No user found with that email', 404));
+    }
+
+    // 2) Generate random 6-digit OTP
+    const otp = crypto.randomInt(100000, 999999).toString();
+    const otpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+
+    // 3) Save OTP and expiry to user
+    user.passwordResetOtp = otp;
+    user.passwordResetExpires = otpExpires;
+    await user.save({ validateBeforeSave: false });
+
+    // 4) Send OTP to user's email
+    const message = `Your password reset OTP is ${otp}. This OTP is valid for 10 minutes.`;
+
+    try {
+      await sendEmail({
+        email: user.email,
+        subject: 'Your password reset OTP (valid for 10 min)',
+        message
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'OTP sent to email'
+      });
+    } catch (err) {
+      // Reset the OTP fields if email fails
+      user.passwordResetOtp = undefined;
+      user.passwordResetExpires = undefined;
+      await user.save({ validateBeforeSave: false });
+
+      return next(new ErrorResponse('Email could not be sent', 500));
+    }
+  } catch (err) {
+    next(err);
+  }
+};
+
+// @desc    Reset password with OTP
+// @route   PUT /api/auth/reset-password
+// @access  Public
+exports.resetPassword = async (req, res, next) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+
+    // 1) Get user based on email
+    const user = await User.findOne({ 
+      email,
+      passwordResetExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return next(new ErrorResponse('Invalid email or OTP has expired', 400));
+    }
+
+    // 2) Check if OTP matches
+    if (user.passwordResetOtp !== otp) {
+      return next(new ErrorResponse('OTP is incorrect', 400));
+    }
+
+    // 3) Update password
+    user.password = newPassword;
+    user.passwordResetOtp = undefined;
+    user.passwordResetExpires = undefined;
+    await user.save();
+
+    // 4) Send confirmation email
+    const message = 'Your password has been successfully updated.';
+
+    await sendEmail({
+      email: user.email,
+      subject: 'Password updated successfully',
+      message
+    });
+
+    // 5) Log the user in by sending token
+    createSendToken(user, 200, res);
   } catch (err) {
     next(err);
   }

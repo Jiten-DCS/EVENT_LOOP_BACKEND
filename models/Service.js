@@ -83,6 +83,6 @@ const serviceSchema = new mongoose.Schema({
 
 // Indexes for better performance
 serviceSchema.index({ category: 1 });
-serviceSchema.index({ location: 'text', title: 'text', description: 'text' });
+serviceSchema.index({ location: 'text', title: 'text', description: 'text', subCategory: 'text' });
 
 module.exports = mongoose.model('Service', serviceSchema);

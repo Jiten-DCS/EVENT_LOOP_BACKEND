@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to Event Loop</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            color: #333333;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border: 1px solid #dddddd;
+        }
+        .header {
+            background-color: #4A148C; /* Purple */
+            color: #ffffff;
+            padding: 20px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        .content {
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .content p {
+            margin: 0 0 15px 0;
+        }
+        .button {
+            display: inline-block;
+            background-color: #000000; /* Black */
+            color: #ffffff !important;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .footer {
+            background-color: #333333; /* Dark Gray/Black */
+            color: #cccccc;
+            padding: 15px;
+            text-align: center;
+            font-size: 12px;
+        }
+        .footer p {
+            margin: 0;
+        }
+        .footer a {
+            color: #ffffff;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Welcome to Event Loop!</h1>
+        </div>
+        <div class="content">
+            <p>Hi {{name}},</p>
+            <p>Thank you for joining Event Loop! We're thrilled to have you as part of our community.</p>
+            <p>Event Loop helps you discover and manage events seamlessly. Get ready to explore a world of exciting opportunities.</p>
+            <p>If you have any questions, feel free to reach out to our support team.</p>
+            <p>
+                <a href="{{appLink}}" class="button">Get Started</a>
+            </p>
+            <p>Best regards,<br>The Event Loop Team</p>
+        </div>
+        <div class="footer">
+            <p>&copy; {{year}} Event Loop. All rights reserved.</p>
+            <p>If you did not sign up for this account, you can ignore this email.</p>
+            <p><a href="{{unsubscribeLink}}">Unsubscribe</a></p>
+        </div>
+    </div>
+</body>
+</html>

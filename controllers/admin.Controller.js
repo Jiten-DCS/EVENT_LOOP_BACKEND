@@ -63,11 +63,25 @@ exports.approveVendor = async (req, res, next) => {
 // @access  Private (Admin only)
 exports.createCategory = async (req, res, next) => {
   try {
-    const { title, subCategories } = req.body;
+    const { title } = req.body;
 
-    console.log(req.body)
+    // Ensure subCategories is an array
+    let subCategories = req.body.subCategories;
+    if (!subCategories) subCategories = [];
+    else if (typeof subCategories === 'string') {
+      // Try parsing JSON array format, e.g. '["a","b"]'
+      try {
+        const parsed = JSON.parse(subCategories);
+        subCategories = Array.isArray(parsed) ? parsed : [parsed];
+      } catch {
+        // Fallback: comma-separated string
+        subCategories = subCategories.split(',').map(s => s.trim()).filter(Boolean);
+      }
+    }
 
-    // Check if image was uploaded
+    console.log({ title, subCategories });
+
+    // Check for uploaded image
     if (!req.file) {
       return next(new ErrorResponse('Please upload a category image', 400));
     }
@@ -75,7 +89,7 @@ exports.createCategory = async (req, res, next) => {
     const category = await Category.create({
       title,
       subCategories,
-      image: req.file.path // Cloudinary URL
+      image: req.file.path
     });
 
     res.status(201).json({
@@ -86,6 +100,7 @@ exports.createCategory = async (req, res, next) => {
     next(err);
   }
 };
+
 
 // @desc    Get all categories
 // @route   GET /api/admin/categories

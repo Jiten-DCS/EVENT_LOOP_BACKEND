@@ -11,7 +11,9 @@ const {
   getUser,
   updateUser,
   deleteUser,
-  updateVendorApproval
+  updateVendorApproval,
+  forgotPassword,
+  resetPassword
 } = require('../controllers/auth.Controller');
 const { protect, authorize, rateLimiter } = require('../middleware/authMiddleware');
 const { uploadSingleImage, uploadMultipleImages } = require('../middleware/uploadMiddleware');
@@ -34,5 +36,10 @@ router.get('/users/:id', protect, authorize('admin'), getUser);
 router.put('/users/:id', protect, authorize('admin'), updateUser);
 router.delete('/users/:id', protect, authorize('admin'), deleteUser);
 router.put('/users/:id/approval', protect, authorize('admin'), updateVendorApproval);
+
+
+//password reset things
+router.post('/forgot-password', forgotPassword);
+router.put('/reset-password', resetPassword);
 
 module.exports = router;
