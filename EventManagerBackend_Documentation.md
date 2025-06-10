@@ -215,7 +215,6 @@ graph TD
 
     %% User Management Module
     subgraph sg_Users [User Management]
-        direction TD
         Users_Manage[Manage Users]
         Users_View[View Users]
         Users_Update[Update User]
@@ -229,7 +228,6 @@ graph TD
 
     %% Vendor Management Module
     subgraph sg_Vendors [Vendor Management]
-        direction TD
         Vendors_Manage[Manage Vendors]
         Vendors_View[View Vendors]
         Vendors_ApproveReject[Approve/Reject Vendor]
@@ -241,7 +239,6 @@ graph TD
 
     %% Category Management Module
     subgraph sg_Categories [Category Management]
-        direction TD
         Categories_Manage[Manage Categories]
         Categories_Create[Create Category]
         Categories_View[View Categories]
@@ -253,7 +250,6 @@ graph TD
 
     %% Offer Management Module
     subgraph sg_Offers [Offer Management (Platform)]
-        direction TD
         Offers_ManagePlatform[Manage Offers (Platform)]
         Offers_ViewAll[View All Offers]
 
@@ -263,7 +259,6 @@ graph TD
 
     %% Booking Oversight Module
     subgraph sg_Bookings [Booking Oversight]
-        direction TD
         Bookings_Oversee[Oversee Bookings]
         Bookings_ViewUserVendor[View User/Vendor Bookings]
         Bookings_UpdateStatus[Update Booking Status]
@@ -275,7 +270,6 @@ graph TD
 
     %% Review Management Module
     subgraph sg_Reviews [Review Management]
-        direction TD
         Reviews_Manage[Manage Reviews]
         Reviews_ModerateDelete[Moderate/Delete Reviews]
 

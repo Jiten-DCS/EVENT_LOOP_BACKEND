@@ -215,7 +215,7 @@ graph TD
 
     %% User Management Module
     subgraph sg_Users [User Management]
-        direction TD
+    
         Users_Manage[Manage Users]
         Users_View[View Users]
         Users_Update[Update User]
