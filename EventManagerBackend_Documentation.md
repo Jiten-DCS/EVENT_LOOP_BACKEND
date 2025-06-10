@@ -249,8 +249,8 @@ graph TD
     AdminDashboard --> Categories_Manage
 
     %% Offer Management Module
-    subgraph sg_Offers [Offer Management (Platform)]
-        Offers_ManagePlatform[Manage Offers (Platform)]
+    subgraph sg_Offers [Offer Management Platform]
+        Offers_ManagePlatform[Manage Offers Platform]
         Offers_ViewAll[View All Offers]
 
         Offers_ManagePlatform --> Offers_ViewAll
