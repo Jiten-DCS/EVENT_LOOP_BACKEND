@@ -23,6 +23,12 @@ exports.createBooking = async (req, res, next) => {
       return next(new ErrorResponse('Vendor not found', 404));
     }
 
+    // Validate booking date (should be in future)
+    const bookingDate = new Date(date);
+    if (bookingDate <= new Date()) {
+      return next(new ErrorResponse('Booking date must be in the future', 400));
+    }
+
     // Create booking
     const booking = await Booking.create({
       user: req.user.id,
@@ -32,20 +38,51 @@ exports.createBooking = async (req, res, next) => {
       service: serviceId,
       message,
       date,
-      amount: service.price
+      amount: service.maxPrice
+    });
+
+    // Create Razorpay order immediately
+    const razorpay = require('../config/razorpay');
+    const Payment = require('../models/Payment');
+
+    const options = {
+      amount: service.maxPrice * 100, // amount in paise
+      currency: 'INR',
+      receipt: `booking_${booking._id}`,
+      payment_capture: 1
+    };
+
+    const order = await razorpay.orders.create(options);
+
+    // Create payment record
+    const payment = await Payment.create({
+      vendor: vendorId,
+      user: req.user.id,
+      booking: booking._id,
+      amount: service.maxPrice,
+      razorpayOrderId: order.id,
+      receipt: order.receipt
     });
 
     // Send notification email to vendor
-    const messageToVendor = `You have a new booking request from ${req.user.name} for ${service.title} on ${date}.`;
+    const messageToVendor = `You have a new booking request from ${req.user.name} for ${service.title} on ${date}. Payment is pending.`;
     await sendEmail({
       email: vendor.email,
-      subject: 'New Booking Request',
+      subject: 'New Booking Request - Payment Pending',
       message: messageToVendor
     });
 
     res.status(201).json({
       success: true,
-      data: booking
+      data: {
+        booking,
+        payment: {
+          orderId: order.id,
+          amount: order.amount,
+          currency: order.currency,
+          key: process.env.RAZORPAY_KEY_ID
+        }
+      }
     });
   } catch (err) {
     next(err);

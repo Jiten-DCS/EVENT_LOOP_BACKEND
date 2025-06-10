@@ -52,4 +52,18 @@ const bookingSchema = new mongoose.Schema({
   }
 });
 
+// Add this to your booking schema
+bookingSchema.index({ createdAt: 1 }, { expireAfterSeconds: 1800 }); // 30 minutes expiry for unpaid bookings
+
+// Or create a cleanup job
+exports.cleanupUnpaidBookings = async () => {
+  const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+  
+  await Booking.deleteMany({
+    paymentStatus: 'pending',
+    createdAt: { $lt: thirtyMinutesAgo }
+  });
+};
+
+
 module.exports = mongoose.model('Booking', bookingSchema);

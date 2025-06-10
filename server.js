@@ -1,11 +1,9 @@
 const express = require('express');
-const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const path = require('path');
 
 // Load env vars
 dotenv.config();
@@ -47,7 +45,7 @@ app.use(limiter);
 
 // Enable CORS
 app.use(cors({
-  origin: process.env.FRONTEND_URL,
+  origin: 'http://localhost:5173', // Adjust if your frontend runs on a different port
   credentials: true
 }));
 

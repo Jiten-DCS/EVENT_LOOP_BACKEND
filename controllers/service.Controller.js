@@ -336,3 +336,50 @@ exports.searchServices = async (req, res, next) => {
     next(err);
   }
 };
+
+
+// @desc    Get all services
+// @route   GET /api/services
+// @access  Public
+exports.getAllServices = async (req, res, next) => {
+  try {
+    const services = await Service.find()
+      .populate("vendor", "name profilePhoto")
+      .populate("category", "title");
+    res.status(200).json({
+      success: true,
+      count: services.length,
+      data: services,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+
+// @desc    Get a single service by id (from query params)
+// @route   GET /api/services/getServices?id=serviceId
+// @access  Public
+exports.getService = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return next(new ErrorResponse("Please provide a service id", 400));
+    }
+
+    const service = await Service.findById(id)
+      .populate("vendor", "name profilePhoto")
+      .populate("category", "title");
+
+    if (!service) {
+      return next(new ErrorResponse("Service not found", 404));
+    }
+
+    res.status(200).json({
+      success: true,
+      data: service,
+    });
+  } catch (err) {
+    next(err);
+  }
+};

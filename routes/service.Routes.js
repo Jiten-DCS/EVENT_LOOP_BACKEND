@@ -6,7 +6,9 @@ const {
   updateService,
   deleteService,
   getServicesByCategory,
-  searchServices
+  searchServices,
+  getAllServices,
+  getService
 } = require('../controllers/service.Controller');
 const { protect, authorize } = require('../middleware/authMiddleware');
 const { uploadMultipleImages } = require('../middleware/uploadMiddleware');
@@ -29,5 +31,7 @@ router.put(
 router.delete('/:id', protect, authorize('vendor'), deleteService);
 router.get('/category/:category', getServicesByCategory);
 router.get('/search', searchServices);
+router.get('/all', getAllServices);
+router.get('/:id', getService);
 
 module.exports = router;
