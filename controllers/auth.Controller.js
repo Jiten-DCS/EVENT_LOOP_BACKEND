@@ -9,7 +9,7 @@ const crypto = require('crypto');
 // @route   POST /api/auth/register
 // @access  Public
 exports.register = async (req, res, next) => {
-  const { name, email, password, role, category } = req.body;
+  const { name, email, password, role,phoneNumber, category } = req.body;
 
   try {
     // Check if user already exists by email
@@ -38,6 +38,7 @@ exports.register = async (req, res, next) => {
       email,
       password,
       role,
+      phoneNumber,
       category: role === 'vendor' ? category : undefined,
       profilePhoto,
       isApproved: role === 'vendor' ? false : true
