@@ -44,6 +44,15 @@ const userSchema = new mongoose.Schema({
     type: String,
     maxlength: [500, 'Description cannot be more than 500 characters']
   },
+  address: {
+    type: String,
+    maxlength: [200, 'Address cannot be more than 200 characters']
+  },
+  businessName: {
+    type: String,
+    required: function() { return this.role === 'vendor'; },
+    maxlength: [100, 'Business name cannot be more than 100 characters']
+  },
   galleryImages: [String],
   services: [{
     type: mongoose.Schema.ObjectId,
@@ -57,6 +66,7 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  
   passwordResetOtp: String,
   passwordResetExpires: Date,
   createdAt: {

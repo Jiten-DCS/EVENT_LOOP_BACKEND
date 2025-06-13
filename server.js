@@ -8,6 +8,10 @@ const rateLimit = require('express-rate-limit');
 // Load env vars
 dotenv.config();
 
+const connectDB = require('./config/db');
+connectDB();
+
+
 // Route files
 const authRoutes = require('./routes/auth.Routes');
 const vendorRoutes = require('./routes/vendor.Routes');
@@ -17,10 +21,8 @@ const paymentRoutes = require('./routes/payment.Routes');
 const adminRoutes = require('./routes/admin.Routes');
 const offerRoutes = require('./routes/offer.Routes');
 const reviewsRoute = require('./routes/review.Routes');
-const connectDB = require('./config/db');
 
 
-connectDB();
 
 const app = express();
 
