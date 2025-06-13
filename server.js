@@ -21,6 +21,7 @@ const paymentRoutes = require('./routes/payment.Routes');
 const adminRoutes = require('./routes/admin.Routes');
 const offerRoutes = require('./routes/offer.Routes');
 const reviewsRoute = require('./routes/review.Routes');
+const wishlistRoutes = require('./routes/wishlist.Routes');
 
 
 
@@ -57,6 +58,7 @@ app.use('/api/vendors', vendorRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/wishlist', wishlistRoutes); // Add this line
 app.use('/api/offer', offerRoutes);
 app.use('/api/reviews', reviewsRoute);
 app.use('/api/admin', adminRoutes);

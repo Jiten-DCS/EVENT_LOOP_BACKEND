@@ -66,7 +66,10 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  
+   wishlist: [{
+    type: mongoose.Schema.ObjectId,
+    ref: 'Service'
+  }],
   passwordResetOtp: String,
   passwordResetExpires: Date,
   createdAt: {
