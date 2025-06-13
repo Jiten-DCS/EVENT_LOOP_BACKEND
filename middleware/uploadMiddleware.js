@@ -1,27 +1,3 @@
-// const multer = require('multer');
-// const { storage } = require('../config/cloudinary');
-// const ErrorResponse = require('../utils/errorResponse');
-
-// const fileFilter = (req, file, cb) => {
-//   if (file.mimetype.startsWith('image')) {
-//     cb(null, true);
-//   } else {
-//     cb(new ErrorResponse('Please upload only images', 400), false);
-//   }
-// };
-
-// const upload = multer({
-//   storage: storage,
-//   fileFilter: fileFilter,
-//   limits: {
-//     fileSize: 1024 * 1024 * 5 // 5MB
-//   }
-// });
-
-// exports.uploadSingleImage = upload.single('image');
-// exports.uploadMultipleImages = upload.array('images', 10);
-
-
 const multer = require('multer');
 const { storage } = require('../config/cloudinary');
 const ErrorResponse = require('../utils/errorResponse');

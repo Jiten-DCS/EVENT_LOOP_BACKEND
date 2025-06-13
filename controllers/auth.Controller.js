@@ -9,7 +9,7 @@ const crypto = require('crypto');
 // @route   POST /api/auth/register
 // @access  Public
 exports.register = async (req, res, next) => {
-  const { name, email, password, role,phoneNumber, category } = req.body;
+  const { name, email, password, role,phoneNumber, category, businessName } = req.body;
 
   try {
     // Check if user already exists by email
@@ -40,11 +40,12 @@ exports.register = async (req, res, next) => {
       role,
       phoneNumber,
       category: role === 'vendor' ? category : undefined,
+      businessName: role === 'vendor' ? businessName : undefined,
       profilePhoto,
       isApproved: role === 'vendor' ? false : true
     });
 
-    // Send welcome email to the new user
+    // Send welcome email
     try {
       await sendEmail({
         email: user.email,
@@ -52,26 +53,24 @@ exports.register = async (req, res, next) => {
         template: 'welcomeEmail',
         templateData: {
           name: user.name,
-          // You might want to use environment variables for these links
           appLink: process.env.APP_URL || 'http://localhost:3000/dashboard',
-          unsubscribeLink: process.env.APP_URL ? `${process.env.APP_URL}/unsubscribe` : 'http://localhost:3000/unsubscribe'
+          unsubscribeLink: process.env.APP_URL
+            ? `${process.env.APP_URL}/unsubscribe`
+            : 'http://localhost:3000/unsubscribe'
         }
       });
     } catch (emailError) {
       console.error('Failed to send welcome email:', emailError);
-      // Decide if registration should fail if email sending fails.
-      // For now, we'll log the error and continue.
     }
 
-    // If vendor, notify admin
+    // Notify admin if vendor
     if (role === 'vendor') {
-      const message = `A new vendor ${user.name} has registered and is waiting for approval. Please review their application in the admin panel.`;
-      // console.log(message) // Logging to console might not be needed if email is sent
+      const message = `A new vendor ${user.name} (${user.businessName}) has registered and is waiting for approval. Please review their application in the admin panel.`;
       try {
         await sendEmail({
           email: process.env.ADMIN_EMAIL,
           subject: 'New Vendor Registration - Action Required',
-          message // This will be plain text, or you can create a template for admin notifications too
+          message
         });
       } catch (adminEmailError) {
         console.error('Failed to send new vendor notification to admin:', adminEmailError);
@@ -83,6 +82,7 @@ exports.register = async (req, res, next) => {
     next(err);
   }
 };
+
 
 // @desc    Login user
 // @route   POST /api/auth/login
@@ -156,25 +156,33 @@ exports.updateProfile = async (req, res, next) => {
       return next(new ErrorResponse('User not found', 404));
     }
 
-    const { name, email, description, category } = req.body;
+    const { name, email, description, category, address, businessName } = req.body;
     const updateData = {};
 
     // Basic fields update
     if (name) updateData.name = name;
+
     if (email) {
-      // Check if email is already taken by another user
       const emailExists = await User.findOne({ email, _id: { $ne: req.user.id } });
       if (emailExists) {
         return next(new ErrorResponse('Email already exists', 400));
       }
       updateData.email = email;
     }
+
     if (description) updateData.description = description;
-    if (category && user.role === 'vendor') updateData.category = category;
+
+    // Vendor-specific fields
+    if (user.role === 'vendor') {
+      if (category) updateData.category = category;
+      if (businessName) updateData.businessName = businessName;
+    }
+
+    // Address update (for both user and vendor)
+    if (address) updateData.address = address;
 
     // Handle profile photo update
     if (req.file) {
-      // Delete old profile photo from cloudinary if it's not default
       if (user.profilePhoto && user.profilePhoto !== 'default.jpg') {
         const publicId = user.profilePhoto.split('/').pop().split('.')[0];
         await cloudinary.uploader.destroy(publicId);
@@ -196,6 +204,7 @@ exports.updateProfile = async (req, res, next) => {
     next(err);
   }
 };
+
 
 // @desc    Update gallery images (Vendors only)
 // @route   PUT /api/auth/update-gallery
