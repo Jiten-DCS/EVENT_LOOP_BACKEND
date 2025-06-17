@@ -48,7 +48,7 @@ app.use(limiter);
 
 // Enable CORS
 app.use(cors({
-  origin: 'http://localhost:8080', // Adjust if your frontend runs on a different port
+  origin: 'http://localhost:5173', // Adjust if your frontend runs on a different port
   credentials: true
 }));
 
