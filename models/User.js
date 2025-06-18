@@ -19,7 +19,13 @@ const userSchema = new mongoose.Schema({
   phoneNumber: {
     type: String,
     required: [true, 'Please provide a phone number'],
-    unique: true
+    unique: true,
+    validate: {
+      validator: function(v) {
+        return validator.isMobilePhone(v, 'any', { strictMode: false });
+      },
+      message: 'Please provide a valid phone number'
+    }
   },
   password: {
     type: String,
@@ -66,16 +72,53 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  
+  wishlist: [{
+    type: mongoose.Schema.ObjectId,
+    ref: 'Service'
+  }],
+  // Password reset fields
   passwordResetOtp: String,
   passwordResetExpires: Date,
+  // Phone verification fields
+  phoneNumberVerified: {
+    type: Boolean,
+    default: false
+  },
+  // Updated Twilio SMS verification fields
+  phoneVerificationOtp: {
+    type: String,
+    select: false
+  },
+  phoneVerificationExpires: {
+    type: Date,
+    select: false
+  },
+  phoneVerificationAttempts: {
+    type: Number,
+    default: 0,
+    max: [5, 'Maximum verification attempts reached']
+  },
+  phoneVerificationBlockedUntil: Date,
+  // Timestamps
   createdAt: {
     type: Date,
     default: Date.now
+  },
+  lastActiveAt: {
+    type: Date,
+    default: Date.now
   }
+}, {
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
 });
 
-// Encrypt password before saving
+// Indexes
+userSchema.index({ name: 'text', email: 'text', description: 'text', phoneNumber: 'text' });
+userSchema.index({ phoneNumberVerified: 1 });
+userSchema.index({ phoneVerificationBlockedUntil: 1 });
+
+// Document middleware to hash password before saving
 userSchema.pre('save', async function(next) {
   if (!this.isModified('password')) return next();
   
@@ -83,12 +126,25 @@ userSchema.pre('save', async function(next) {
   next();
 });
 
-// Method to compare passwords
+// Update lastActiveAt timestamp before update
+userSchema.pre('findOneAndUpdate', function(next) {
+  this.set({ lastActiveAt: Date.now() });
+  next();
+});
+
+// Instance method to compare passwords
 userSchema.methods.comparePassword = async function(candidatePassword, userPassword) {
   return await bcrypt.compare(candidatePassword, userPassword);
 };
 
-// Create text indexes for better search functionality on name, email, and description
-userSchema.index({ name: 'text', email: 'text', description: 'text', phoneNumber: 'text' });
+// Instance method to check if phone verification is blocked
+userSchema.methods.isPhoneVerificationBlocked = function() {
+  return this.phoneVerificationBlockedUntil && this.phoneVerificationBlockedUntil > Date.now();
+};
+
+// Virtual for formatted phone number
+userSchema.virtual('formattedPhone').get(function() {
+  return `+${this.phoneNumber.replace(/\D/g, '')}`;
+});
 
 module.exports = mongoose.model('User', userSchema);
