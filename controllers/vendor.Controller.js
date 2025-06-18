@@ -8,6 +8,7 @@ const Service = require('../models/Service');
 // @route   GET /api/vendors
 // @access  Public
 exports.getVendors = async (req, res, next) => {
+  console.log("getVendors")
   try {
     const vendors = await User.find({ 
       role: 'vendor', 

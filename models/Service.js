@@ -18,12 +18,12 @@ const serviceSchema = new mongoose.Schema({
     maxlength: [5000, 'Description cannot be more than 1000 characters']
   },
   minPrice: {
-    type: Number,
+    type: String,
     required: [true, 'Please provide minimum price'],
     min: [0, 'Price cannot be negative']
   },
   maxPrice: {
-    type: Number,
+    type: String,
     required: [true, 'Please provide maximum price'],
     validate: {
       validator: function(value) {
@@ -40,15 +40,15 @@ const serviceSchema = new mongoose.Schema({
   subCategory: {
     type: String,
     required: [true, 'Please provide a sub-category'],
-    validate: {
-      validator: function(value) {
-        // This will check if subCategory exists in the category's subCategories array
-        return this.populated('category') 
-          ? this.category.subCategories.includes(value)
-          : true;
-      },
-      message: 'Invalid sub-category for the selected category'
-    }
+    // validate: {
+    //   validator: function(value) {
+    //     // This will check if subCategory exists in the category's subCategories array
+    //     return this.populated('category') 
+    //       ? this.category.subCategories.includes(value)
+    //       : true;
+    //   },
+    //   message: 'Invalid sub-category for the selected category'
+    // }
   },
   tags: [String],
   images: {
