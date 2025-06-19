@@ -48,7 +48,7 @@ app.use(limiter);
 
 // Enable CORS
 app.use(cors({
-  origin: 'http://localhost:5173', // Adjust if your frontend runs on a different port
+  origin: 'http://localhost:8080', // Adjust if your frontend runs on a different port
   credentials: true
 }));
 
@@ -58,7 +58,7 @@ app.use('/api/vendors', vendorRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/payments', paymentRoutes);
-app.use('/api/wishlist', wishlistRoutes); // Add this line
+app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/offer', offerRoutes);
 app.use('/api/reviews', reviewsRoute);
 app.use('/api/admin', adminRoutes);

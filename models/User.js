@@ -147,4 +147,5 @@ userSchema.methods.isPhoneVerificationBlocked = function() {
 //   return `+${this.phoneNumber.replace(/\D/g, '')}`;
 // });
 
+
 module.exports = mongoose.model('User', userSchema);

@@ -17,19 +17,19 @@ exports.createService = async (req, res, next) => {
     }
 
     const {
-  title,
-  description,
-  minPrice,
-  maxPrice,
-  category,
-  subCategory,
-  location,
-  phone,
-  website,
-  socialLinks,
-} = req.body;
+      title,
+      description,
+      minPrice,
+      maxPrice,
+      category,
+      subCategory,
+      location,
+      phone,
+      website,
+      socialLinks,
+    } = req.body;
 
-let tags = req.body.tags;
+    let tags = req.body.tags;
 
 
     // Validate images
@@ -193,18 +193,19 @@ exports.updateService = async (req, res, next) => {
         }
       }
     }
+    // Convert price strings to numbers to avoid validation error
+    if (req.body.minPrice) req.body.minPrice = Number(req.body.minPrice);
+    if (req.body.maxPrice) req.body.maxPrice = Number(req.body.maxPrice);
 
     // Prevent vendor field from being changed
     delete req.body.vendor;
 
-    service = await Service.findByIdAndUpdate(
-      req.params.id,
-      { ...req.body, images },
-      {
-        new: true,
-        runValidators: true,
-      }
-    );
+    // Set the new values to the existing service doc
+    service.set({ ...req.body, images });
+
+    // Save to trigger proper validation
+    await service.save();
+
 
     res.status(200).json({
       success: true,
@@ -313,13 +314,13 @@ exports.searchServices = async (req, res, next) => {
       query.location = new RegExp(escapedLocation, "i");
     }
 
-   if (category && mongoose.Types.ObjectId.isValid(category)) {
-  // This line is functionally correct. The TS warning is likely due to
-  // type inference limitations regarding the ObjectId constructor signature.
-  // The isValid() check ensures 'category' is not a number that would
-  // trigger the deprecated (inputId: number) constructor.
-  query.category = new mongoose.Types.ObjectId(category);
-}
+    if (category && mongoose.Types.ObjectId.isValid(category)) {
+      // This line is functionally correct. The TS warning is likely due to
+      // type inference limitations regarding the ObjectId constructor signature.
+      // The isValid() check ensures 'category' is not a number that would
+      // trigger the deprecated (inputId: number) constructor.
+      query.category = new mongoose.Types.ObjectId(category);
+    }
 
     console.log(query)
 
