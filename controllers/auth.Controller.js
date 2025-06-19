@@ -384,16 +384,16 @@ exports.login = async (req, res, next) => {
     }
 
     // Check if phone number is verified
-    if (!user.phoneNumberVerified) {
-      return res.status(200).json({
-        success: false,
-        message:
-          "Phone number not verified. Please verify your phone number to continue.",
-        requiresPhoneVerification: true,
-        userId: user._id,
-        phoneNumber: user.phoneNumber,
-      });
-    }
+    // if (!user.phoneNumberVerified) {
+    //   return res.status(200).json({
+    //     success: false,
+    //     message:
+    //       "Phone number not verified. Please verify your phone number to continue.",
+    //     requiresPhoneVerification: true,
+    //     userId: user._id,
+    //     phoneNumber: user.phoneNumber,
+    //   });
+    // }
 
     // Check if vendor is approved
     if (user.role === "vendor" && !user.isApproved) {
@@ -402,6 +402,7 @@ exports.login = async (req, res, next) => {
 
     createSendToken(user, 200, res);
   } catch (err) {
+    console.log("err in login",err)
     next(err);
   }
 };

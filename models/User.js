@@ -143,8 +143,14 @@ userSchema.methods.isPhoneVerificationBlocked = function() {
 };
 
 // Virtual for formatted phone number
+// userSchema.virtual('formattedPhone').get(function() {
+//   return `+${this.phoneNumber.replace(/\D/g, '')}`;
+// });
+
 userSchema.virtual('formattedPhone').get(function() {
+  if (!this.phoneNumber) return null;
   return `+${this.phoneNumber.replace(/\D/g, '')}`;
 });
+
 
 module.exports = mongoose.model('User', userSchema);
