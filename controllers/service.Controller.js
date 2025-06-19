@@ -4,6 +4,7 @@ const ErrorResponse = require("../utils/errorResponse");
 const { cloudinary } = require("../config/cloudinary");
 const Category = require("../models/Category");
 const mongoose = require("mongoose")
+const Offer = require('../models/Offer');
 
 // @desc    Create new service
 // @route   POST /api/services
@@ -341,20 +342,70 @@ exports.searchServices = async (req, res, next) => {
 // @desc    Get all services
 // @route   GET /api/services
 // @access  Public
+// exports.getAllServices = async (req, res, next) => {
+//   try {
+//     const services = await Service.find()
+//       .populate("vendor", "name profilePhoto")
+//       .populate("category", "title");
+//     res.status(200).json({
+//       success: true,
+//       count: services.length,
+//       data: services,
+//     });
+//   } catch (err) {
+//     next(err);
+//   }
+// };
+
+
+// @desc    Get all services with optional offers
+// @route   GET /api/services
+// @access  Public
 exports.getAllServices = async (req, res, next) => {
   try {
+    // Step 1: Get all services
     const services = await Service.find()
       .populate("vendor", "name profilePhoto")
-      .populate("category", "title");
+      .populate("category", "title")
+      .lean(); // lean() for better performance and ability to modify result
+
+    // Step 2: Fetch offers for services
+    const serviceIds = services.map(s => s._id);
+    const offers = await Offer.find({
+      service: { $in: serviceIds },
+      isActive: true,
+      validFrom: { $lte: new Date() },
+      validTill: { $gte: new Date() }
+    }).select("service discountedPrice discountPercentage").lean();
+
+    const offerMap = new Map();
+    offers.forEach(offer => {
+      offerMap.set(offer.service.toString(), {
+        discountedPrice: offer.discountedPrice,
+        discountPercentage: offer.discountPercentage
+      });
+    });
+
+    // Step 3: Attach offer info to services
+    const enrichedServices = services.map(service => {
+      const offer = offerMap.get(service._id.toString());
+      return {
+        ...service,
+        offer: offer || null
+      };
+    });
+
+    // Step 4: Respond
     res.status(200).json({
       success: true,
-      count: services.length,
-      data: services,
+      count: enrichedServices.length,
+      data: enrichedServices,
     });
   } catch (err) {
     next(err);
   }
 };
+
 
 
 // @desc    Get a single service by id (from query params)
