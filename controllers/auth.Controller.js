@@ -29,7 +29,7 @@ exports.register = async (req, res, next) => {
     }
 
     // Handle profile photo upload
-    let profilePhoto = "default.jpg";
+    let profilePhoto = "https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png";
     if (req.file) {
       profilePhoto = req.file.path;
     }
