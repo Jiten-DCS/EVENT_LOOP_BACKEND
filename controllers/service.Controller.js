@@ -101,12 +101,38 @@ exports.createService = async (req, res, next) => {
 // @access  Public
 exports.getVendorServices = async (req, res, next) => {
   try {
-    const services = await Service.find({ vendor: req.params.vendorId });
+    // Step 1: Fetch services created by the vendor
+    const services = await Service.find({ vendor: req.params.vendorId })
+      .populate("category", "title")
+      .lean();
 
+    const serviceIds = services.map(service => service._id);
+
+    // Step 2: Fetch active offers for these services
+    const offers = await Offer.find({
+      service: { $in: serviceIds },
+      isActive: true,
+      validFrom: { $lte: new Date() },
+      validTill: { $gte: new Date() }
+    }).select("service discountedPrice discountPercentage bannerImage").lean();
+
+    // Step 3: Create offer map
+    const offerMap = new Map();
+    offers.forEach(offer => {
+      offerMap.set(offer.service.toString(), offer);
+    });
+
+    // Step 4: Attach offer to each service
+    const enrichedServices = services.map(service => ({
+      ...service,
+      offer: offerMap.get(service._id.toString()) || null
+    }));
+
+    // Step 5: Return response
     res.status(200).json({
       success: true,
-      count: services.length,
-      data: services,
+      count: enrichedServices.length,
+      data: enrichedServices,
     });
   } catch (err) {
     next(err);

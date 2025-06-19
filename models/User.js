@@ -59,7 +59,15 @@ const userSchema = new mongoose.Schema({
     required: function() { return this.role === 'vendor'; },
     maxlength: [100, 'Business name cannot be more than 100 characters']
   },
-  galleryImages: [String],
+  galleryImages: {
+  type: [String],
+  validate: {
+    validator: function (arr) {
+      return arr.length <= 12;
+    },
+    message: 'You can upload a maximum of 12 gallery images.'
+  }
+},
   services: [{
     type: mongoose.Schema.ObjectId,
     ref: 'Service'
