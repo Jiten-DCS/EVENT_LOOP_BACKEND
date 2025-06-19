@@ -31,14 +31,45 @@ exports.getVendors = async (req, res, next) => {
 // @access  Public
 exports.getVendor = async (req, res, next) => {
   try {
+    // Step 1: Fetch the vendor and their services
     const vendor = await User.findById(req.params.id)
       .select('-password')
-      .populate('services');
+      .populate({
+        path: 'services',
+        populate: { path: 'category', select: 'title' } // Optional: category data
+      })
+      .lean(); // Enable post-processing
 
     if (!vendor || vendor.role !== 'vendor' || !vendor.isApproved) {
       return next(new ErrorResponse('Vendor not found', 404));
     }
 
+    // Step 2: Extract service IDs
+    const serviceIds = vendor.services.map(service => service._id);
+
+    // Step 3: Fetch active offers for those services
+    const offers = await Offer.find({
+      service: { $in: serviceIds },
+      isActive: true,
+      validFrom: { $lte: new Date() },
+      validTill: { $gte: new Date() }
+    }).select('service discountedPrice discountPercentage bannerImage');
+
+    // Step 4: Attach offer to the correct service
+    const offerMap = new Map();
+    offers.forEach(offer => {
+      offerMap.set(offer.service.toString(), offer);
+    });
+
+    vendor.services = vendor.services.map(service => {
+      const offer = offerMap.get(service._id.toString());
+      return {
+        ...service,
+        offer: offer || null
+      };
+    });
+
+    // Step 5: Respond
     res.status(200).json({
       success: true,
       data: vendor
@@ -116,7 +147,6 @@ exports.uploadGalleryImages = async (req, res, next) => {
     next(err);
   }
 };
-
 
 // @desc    Create new offer
 // @route   POST /api/offers

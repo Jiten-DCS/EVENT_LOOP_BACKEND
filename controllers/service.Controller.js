@@ -3,8 +3,8 @@ const User = require("../models/User");
 const ErrorResponse = require("../utils/errorResponse");
 const { cloudinary } = require("../config/cloudinary");
 const Category = require("../models/Category");
-const mongoose = require("mongoose")
-const Offer = require('../models/Offer');
+const mongoose = require("mongoose");
+const Offer = require("../models/Offer");
 
 // @desc    Create new service
 // @route   POST /api/services
@@ -30,7 +30,6 @@ exports.createService = async (req, res, next) => {
     } = req.body;
 
     let tags = req.body.tags;
-
 
     // Validate images
     if (!req.files || req.files.length === 0) {
@@ -206,7 +205,6 @@ exports.updateService = async (req, res, next) => {
     // Save to trigger proper validation
     await service.save();
 
-
     res.status(200).json({
       success: true,
       data: service,
@@ -278,14 +276,42 @@ exports.getServicesByCategory = async (req, res, next) => {
       query.$text = { $search: search };
     }
 
-    const services = await Service.find({ category })
+    // Step 1: Find services based on filters
+    const services = await Service.find(query)
       .populate("vendor", "name profilePhoto")
-      .populate("category", "title");
+      .populate("category", "title")
+      .lean();
 
+    // Step 2: Extract service IDs
+    const serviceIds = services.map((service) => service._id);
+
+    // Step 3: Find active offers for the fetched services
+    const offers = await Offer.find({
+      service: { $in: serviceIds },
+      isActive: true,
+      validFrom: { $lte: new Date() },
+      validTill: { $gte: new Date() },
+    })
+      .select("service discountedPrice discountPercentage bannerImage")
+      .lean();
+
+    // Step 4: Create a map to attach offers
+    const offerMap = new Map();
+    offers.forEach((offer) => {
+      offerMap.set(offer.service.toString(), offer);
+    });
+
+    // Step 5: Attach offer to each service
+    const enrichedServices = services.map((service) => ({
+      ...service,
+      offer: offerMap.get(service._id.toString()) || null,
+    }));
+
+    // Step 6: Respond
     res.status(200).json({
       success: true,
-      count: services.length,
-      data: services,
+      count: enrichedServices.length,
+      data: enrichedServices,
     });
   } catch (err) {
     next(err);
@@ -298,66 +324,66 @@ exports.getServicesByCategory = async (req, res, next) => {
 exports.searchServices = async (req, res, next) => {
   try {
     const { q, location, category } = req.query;
-
     let query = {};
 
+    // Text search
     if (q) {
       query.$text = { $search: q };
     }
 
+    // Location filter with RegExp escape
     if (location) {
-      // Sanitize location input to prevent RegExp injection
-      const escapeRegExp = (string) => {
-        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
-      };
+      const escapeRegExp = (string) =>
+        string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const escapedLocation = escapeRegExp(String(location));
       query.location = new RegExp(escapedLocation, "i");
     }
 
+    // Category filter by ObjectId
     if (category && mongoose.Types.ObjectId.isValid(category)) {
-      // This line is functionally correct. The TS warning is likely due to
-      // type inference limitations regarding the ObjectId constructor signature.
-      // The isValid() check ensures 'category' is not a number that would
-      // trigger the deprecated (inputId: number) constructor.
       query.category = new mongoose.Types.ObjectId(category);
     }
 
-    console.log(query)
+    console.log(query);
 
-    const services = await Service.find(query).populate(
-      "vendor",
-      "name profilePhoto"
-    );
+    // Step 1: Find services matching query
+    const services = await Service.find(query)
+      .populate("vendor", "name profilePhoto")
+      .lean();
 
+    // Step 2: Find active offers for found services
+    const serviceIds = services.map((service) => service._id);
+    const offers = await Offer.find({
+      service: { $in: serviceIds },
+      isActive: true,
+      validFrom: { $lte: new Date() },
+      validTill: { $gte: new Date() },
+    })
+      .select("service discountedPrice discountPercentage bannerImage")
+      .lean();
+
+    // Step 3: Map offers to services
+    const offerMap = new Map();
+    offers.forEach((offer) => {
+      offerMap.set(offer.service.toString(), offer);
+    });
+
+    // Step 4: Attach offers to each service
+    const enrichedServices = services.map((service) => ({
+      ...service,
+      offer: offerMap.get(service._id.toString()) || null,
+    }));
+
+    // Step 5: Respond
     res.status(200).json({
       success: true,
-      count: services.length,
-      data: services,
+      count: enrichedServices.length,
+      data: enrichedServices,
     });
   } catch (err) {
     next(err);
   }
 };
-
-
-// @desc    Get all services
-// @route   GET /api/services
-// @access  Public
-// exports.getAllServices = async (req, res, next) => {
-//   try {
-//     const services = await Service.find()
-//       .populate("vendor", "name profilePhoto")
-//       .populate("category", "title");
-//     res.status(200).json({
-//       success: true,
-//       count: services.length,
-//       data: services,
-//     });
-//   } catch (err) {
-//     next(err);
-//   }
-// };
-
 
 // @desc    Get all services with optional offers
 // @route   GET /api/services
@@ -371,28 +397,30 @@ exports.getAllServices = async (req, res, next) => {
       .lean(); // lean() for better performance and ability to modify result
 
     // Step 2: Fetch offers for services
-    const serviceIds = services.map(s => s._id);
+    const serviceIds = services.map((s) => s._id);
     const offers = await Offer.find({
       service: { $in: serviceIds },
       isActive: true,
       validFrom: { $lte: new Date() },
-      validTill: { $gte: new Date() }
-    }).select("service discountedPrice discountPercentage").lean();
+      validTill: { $gte: new Date() },
+    })
+      .select("service discountedPrice discountPercentage")
+      .lean();
 
     const offerMap = new Map();
-    offers.forEach(offer => {
+    offers.forEach((offer) => {
       offerMap.set(offer.service.toString(), {
         discountedPrice: offer.discountedPrice,
-        discountPercentage: offer.discountPercentage
+        discountPercentage: offer.discountPercentage,
       });
     });
 
     // Step 3: Attach offer info to services
-    const enrichedServices = services.map(service => {
+    const enrichedServices = services.map((service) => {
       const offer = offerMap.get(service._id.toString());
       return {
         ...service,
-        offer: offer || null
+        offer: offer || null,
       };
     });
 
@@ -407,8 +435,6 @@ exports.getAllServices = async (req, res, next) => {
   }
 };
 
-
-
 // @desc    Get a single service by id (from query params)
 // @route   GET /api/services/getServices?id=serviceId
 // @access  Public
@@ -419,14 +445,28 @@ exports.getService = async (req, res, next) => {
       return next(new ErrorResponse("Please provide a service id", 400));
     }
 
+    // Step 1: Get the service with vendor & category
     const service = await Service.findById(id)
       .populate("vendor", "name profilePhoto")
-      .populate("category", "title");
+      .populate("category", "title")
+      .lean();
 
     if (!service) {
       return next(new ErrorResponse("Service not found", 404));
     }
 
+    // Step 2: Find active offer for this service
+    const offer = await Offer.findOne({
+      service: id,
+      isActive: true,
+      validFrom: { $lte: new Date() },
+      validTill: { $gte: new Date() },
+    }).select("discountedPrice discountPercentage bannerImage validTill");
+
+    // Step 3: Attach offer if found
+    service.offer = offer || null;
+
+    // Step 4: Send response
     res.status(200).json({
       success: true,
       data: service,
