@@ -63,9 +63,9 @@ const offerSchema = new mongoose.Schema({
 // Pre-save middleware for new documents
 offerSchema.pre('save', function(next) {
   // Calculate discount percentage
-  if (this.originalPrice && this.discountedPrice) {
-    this.discountPercentage = Math.round(((this.originalPrice - this.discountedPrice) / this.originalPrice) * 100);
-  }
+  // if (this.originalPrice && this.discountedPrice) {
+  //   this.discountPercentage = Math.round(((this.originalPrice - this.discountedPrice) / this.originalPrice) * 100);
+  // }
   
   // Validate dates
   if (this.validTill <= this.validFrom) {

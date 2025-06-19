@@ -127,7 +127,7 @@ exports.createOffer = async (req, res, next) => {
       title,
       description,
       originalPrice,
-      discountedPrice,
+      discountPercentage,
       validFrom,
       validTill
     } = req.body;
@@ -164,6 +164,10 @@ exports.createOffer = async (req, res, next) => {
       console.log(`Deactivated ${deactivatedOffers.modifiedCount} existing offer(s) for service ${service}`);
     }
 
+    // Calculate discounted price
+const discountedPrice = Math.round(originalPrice * (1 - discountPercentage / 100));
+
+
     // Create the new offer
     const offer = await Offer.create({
       vendor: req.user.id,
@@ -173,6 +177,7 @@ exports.createOffer = async (req, res, next) => {
       bannerImage: req.file.path, // Cloudinary URL
       originalPrice,
       discountedPrice,
+      discountPercentage,
       validFrom,
       validTill,
       isActive: true // Explicitly set as active
@@ -220,36 +225,37 @@ exports.updateOffer = async (req, res, next) => {
       return next(new ErrorResponse('Offer not found', 404));
     }
 
-    // Make sure user is offer owner
+    // Ensure only the vendor who created the offer can update it
     if (offer.vendor.toString() !== req.user.id) {
       return next(new ErrorResponse('Not authorized to update this offer', 401));
     }
 
-    // If new image is uploaded, update bannerImage
+    // If a new image was uploaded, include it
     if (req.file) {
       req.body.bannerImage = req.file.path;
     }
 
-    // Manual validation for date fields
-    if (req.body.validTill || req.body.validFrom) {
-      const validFrom = req.body.validFrom ? new Date(req.body.validFrom) : offer.validFrom;
-      const validTill = req.body.validTill ? new Date(req.body.validTill) : offer.validTill;
-      
-      if (validTill <= validFrom) {
-        return next(new ErrorResponse('End date must be after start date', 400));
-      }
+    // Validate dates
+    const validFrom = req.body.validFrom ? new Date(req.body.validFrom) : offer.validFrom;
+    const validTill = req.body.validTill ? new Date(req.body.validTill) : offer.validTill;
+    if (validTill <= validFrom) {
+      return next(new ErrorResponse('End date must be after start date', 400));
     }
 
-    // Manual validation for price fields
-    if (req.body.discountedPrice || req.body.originalPrice) {
-      const originalPrice = req.body.originalPrice || offer.originalPrice;
-      const discountedPrice = req.body.discountedPrice || offer.discountedPrice;
-      
-      if (discountedPrice >= originalPrice) {
-        return next(new ErrorResponse('Discounted price must be less than original price', 400));
-      }
+    // Resolve prices
+    const originalPrice = req.body.originalPrice || offer.originalPrice;
+    const discountPercentage = req.body.discountPercentage || offer.discountPercentage;
+
+    // Calculate and set discountedPrice
+    const discountedPrice = Math.round(originalPrice * (1 - discountPercentage / 100));
+
+    if (discountedPrice >= originalPrice) {
+      return next(new ErrorResponse('Discounted price must be less than original price', 400));
     }
 
+    req.body.discountedPrice = discountedPrice;
+
+    // Proceed with update
     offer = await Offer.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
       runValidators: true
@@ -257,12 +263,15 @@ exports.updateOffer = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
+      message: 'Offer updated successfully',
       data: offer
     });
+
   } catch (err) {
     next(err);
   }
 };
+
 
 // @desc    Delete offer
 // @route   DELETE /api/offers/:id
