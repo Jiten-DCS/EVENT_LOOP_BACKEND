@@ -6,7 +6,9 @@ const {
   createCategory,
   getCategories,
   getOffers,
-  getOffer
+  getOffer,
+  blockUser,
+  unblockUser
 } = require('../controllers/admin.Controller');
 const { protect, authorize } = require('../middleware/authMiddleware');
 const { uploadSingleImage } = require('../middleware/uploadMiddleware');
@@ -21,5 +23,9 @@ router.get('/categories', getCategories);
 // Offer routes
 router.get('/offers', getOffers);
 router.get('/offers/:id', getOffer);
+
+//block routes
+router.put('/users/:id/block', protect, authorize('admin'), blockUser);
+router.put('/users/:id/unblock', protect, authorize('admin'), unblockUser);
 
 module.exports = router;

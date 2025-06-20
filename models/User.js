@@ -107,6 +107,23 @@ const userSchema = new mongoose.Schema({
     max: [5, 'Maximum verification attempts reached']
   },
   phoneVerificationBlockedUntil: Date,
+  isBlocked: {
+    type: Boolean,
+    default: false
+  },
+  blockDetails: {
+    blockedAt: Date,
+    blockedBy: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'User'
+    },
+    reason: String,
+    unblockedAt: Date,
+    unblockedBy: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'User'
+    }
+  },
   // Timestamps
   createdAt: {
     type: Date,

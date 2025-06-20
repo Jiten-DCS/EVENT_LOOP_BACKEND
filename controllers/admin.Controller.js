@@ -177,3 +177,83 @@ exports.getOffer = async (req, res, next) => {
     next(err);
   }
 };
+
+
+// @desc    Block a user
+// @route   PUT /api/admin/users/:id/block
+// @access  Private (Admin only)
+exports.blockUser = async (req, res, next) => {
+  try {
+    const { reason } = req.body;
+
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      {
+        isBlocked: true,
+        blockDetails: {
+          blockedAt: Date.now(),
+          blockedBy: req.user.id,
+          reason
+        }
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!user) {
+      return next(new ErrorResponse('User not found', 404));
+    }
+
+    // Send notification email
+    const message = `Your account has been blocked by the admin. Reason: ${reason}`;
+    await sendEmail({
+      email: user.email,
+      subject: 'Account Blocked',
+      message
+    });
+
+    res.status(200).json({
+      success: true,
+      data: user
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// @desc    Unblock a user
+// @route   PUT /api/admin/users/:id/unblock
+// @access  Private (Admin only)
+exports.unblockUser = async (req, res, next) => {
+  try {
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      {
+        isBlocked: false,
+        $set: {
+          'blockDetails.unblockedAt': Date.now(),
+          'blockDetails.unblockedBy': req.user.id
+        }
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!user) {
+      return next(new ErrorResponse('User not found', 404));
+    }
+
+    // Send notification email
+    const message = 'Your account has been unblocked by the admin. You can now login and use the platform.';
+    await sendEmail({
+      email: user.email,
+      subject: 'Account Unblocked',
+      message
+    });
+
+    res.status(200).json({
+      success: true,
+      data: user
+    });
+  } catch (err) {
+    next(err);
+  }
+};
