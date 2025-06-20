@@ -21,7 +21,7 @@ const paymentRoutes = require('./routes/payment.Routes');
 const adminRoutes = require('./routes/admin.Routes');
 const offerRoutes = require('./routes/offer.Routes');
 const reviewsRoute = require('./routes/review.Routes');
-const reviewsRoute = require('./routes/support.Routes');
+const supportRoutes = require('./routes/support.Routes');
 const wishlistRoutes = require('./routes/wishlist.Routes');
 
 

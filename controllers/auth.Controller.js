@@ -39,21 +39,21 @@ exports.register = async (req, res, next) => {
     const otpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
 
     // First try to send OTP via Twilio before creating user
-    try {
-      await client.messages.create({
-        body: `Your verification code is: ${otp}. Valid for 10 minutes.`,
-        from: process.env.TWILIO_PHONE_NUMBER,
-        to: phoneNumber,
-      });
-    } catch (twilioError) {
-      console.error("Twilio error:", twilioError);
-      return next(
-        new ErrorResponse(
-          "Failed to send verification SMS. Please check your phone number.",
-          400
-        )
-      );
-    }
+    // try {
+    //   await client.messages.create({
+    //     body: `Your verification code is: ${otp}. Valid for 10 minutes.`,
+    //     from: process.env.TWILIO_PHONE_NUMBER,
+    //     to: phoneNumber,
+    //   });
+    // } catch (twilioError) {
+    //   console.error("Twilio error:", twilioError);
+    //   return next(
+    //     new ErrorResponse(
+    //       "Failed to send verification SMS. Please check your phone number.",
+    //       400
+    //     )
+    //   );
+    // }
 
     // Create user only after successful SMS sending
     const user = await User.create({
@@ -366,29 +366,40 @@ exports.verifyOTP = async (req, res, next) => {
 // @desc    Login user
 // @route   POST /api/auth/login
 // @access  Public
-// Updated login function
 exports.login = async (req, res, next) => {
   const { email, password } = req.body;
 
   try {
     // Check if email and password exist
     if (!email || !password) {
-      return next(new ErrorResponse("Please provide email and password", 400));
+      return next(new ErrorResponse('Please provide email and password', 400));
     }
 
     // Check if user exists and password is correct
-    const user = await User.findOne({ email }).select("+password");
+    const user = await User.findOne({ email })
+      .select('+password')
+      
 
     if (!user || !(await user.comparePassword(password, user.password))) {
-      return next(new ErrorResponse("Incorrect email or password", 401));
+      return next(new ErrorResponse('Incorrect email or password', 401));
     }
 
-    // Check if phone number is verified
+    // Check if user is blocked
+    if (user.isBlocked) {
+      const blockInfo = user.blockDetails;
+      return next(new ErrorResponse(
+        `Your account has been blocked by admin. Reason: ${blockInfo.reason || 'Not specified'}. ` +
+        `Blocked on: ${blockInfo.blockedAt.toLocaleString()}. ` +
+        'Please check your registered email for more details.',
+        403
+      ));
+    }
+
+    // Check if phone number is verified (optional)
     // if (!user.phoneNumberVerified) {
     //   return res.status(200).json({
     //     success: false,
-    //     message:
-    //       "Phone number not verified. Please verify your phone number to continue.",
+    //     message: 'Phone number not verified. Please verify to continue.',
     //     requiresPhoneVerification: true,
     //     userId: user._id,
     //     phoneNumber: user.phoneNumber,
@@ -396,17 +407,23 @@ exports.login = async (req, res, next) => {
     // }
 
     // Check if vendor is approved
-    if (user.role === "vendor" && !user.isApproved) {
-      return next(new ErrorResponse("Your account is pending approval", 401));
+    if (user.role === 'vendor' && !user.isApproved) {
+      return res.status(200).json({
+        success: false,
+        message: 'Your vendor account is pending admin approval. ' +
+                 'You will be notified via email once approved.',
+        isVendorPendingApproval: true
+      });
     }
 
+    // Successful login
     createSendToken(user, 200, res);
+
   } catch (err) {
-    console.log("err in login",err)
-    next(err);
+    console.error('Error in login:', err);
+    next(new ErrorResponse('Login failed. Please try again later.', 500));
   }
 };
-
 // @desc    Logout user
 // @route   GET /api/auth/logout
 // @access  Private
