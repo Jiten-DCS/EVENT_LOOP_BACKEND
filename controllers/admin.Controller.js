@@ -119,6 +119,103 @@ exports.getCategories = async (req, res, next) => {
   }
 };
 
+
+// @desc    Update category
+// @route   PUT /api/admin/categories/:id
+// @access  Private (Admin only)
+exports.updateCategory = async (req, res, next) => {
+  try {
+    const { title, subCategories } = req.body;
+    const updateData = {};
+
+    // Handle title update
+    if (title) {
+      updateData.title = title;
+    }
+
+    // Handle subCategories update
+    if (subCategories) {
+      let processedSubCategories = subCategories;
+      if (typeof subCategories === 'string') {
+        try {
+          const parsed = JSON.parse(subCategories);
+          processedSubCategories = Array.isArray(parsed) ? parsed : [parsed];
+        } catch {
+          processedSubCategories = subCategories.split(',').map(s => s.trim()).filter(Boolean);
+        }
+      }
+      updateData.subCategories = processedSubCategories;
+    }
+
+    // Handle image update if new file uploaded
+    if (req.file) {
+      updateData.image = req.file.path;
+      
+      // Optionally delete old image from storage
+      // const oldCategory = await Category.findById(req.params.id);
+      // if (oldCategory.image) {
+      //   // Add code here to delete the old image from your storage (Cloudinary, S3, etc.)
+      //   // Example for Cloudinary:
+      //   // await cloudinary.uploader.destroy(oldCategory.image);
+      // }
+    }
+
+    const category = await Category.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      {
+        new: true,
+        runValidators: true
+      }
+    );
+
+    if (!category) {
+      return next(new ErrorResponse('Category not found', 404));
+    }
+
+    res.status(200).json({
+      success: true,
+      data: category
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// @desc    Delete category
+// @route   DELETE /api/admin/categories/:id
+// @access  Private (Admin only)
+exports.deleteCategory = async (req, res, next) => {
+  try {
+    const category = await Category.findByIdAndDelete(req.params.id);
+
+    if (!category) {
+      return next(new ErrorResponse('Category not found', 404));
+    }
+
+    // Delete associated image from storage
+    if (category.image) {
+      // Add code here to delete the image from your storage
+      // Example for Cloudinary:
+      // await cloudinary.uploader.destroy(category.image);
+    }
+
+    // Optional: Handle services that might be using this category
+    // Example:
+    // await Service.updateMany(
+    //   { category: category.title },
+    //   { $unset: { category: 1 } }
+    // );
+
+    res.status(200).json({
+      success: true,
+      data: {}
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // @desc    Get all offers
 // @route   GET /api/admin/offers
 // @access  Public
@@ -186,6 +283,23 @@ exports.blockUser = async (req, res, next) => {
   try {
     const { reason } = req.body;
 
+    if (!reason) {
+      return next(new ErrorResponse('Reason is required', 400));
+    }
+
+    // First find the user to check their role
+    const userToBlock = await User.findById(req.params.id);
+    
+    if (!userToBlock) {
+      return next(new ErrorResponse('User not found', 404));
+    }
+
+    // Check if user is a vendor
+    if (userToBlock.role === 'vendor') {
+      return next(new ErrorResponse('Vendors cannot be blocked', 400));
+    }
+
+    // Proceed with blocking if not a vendor
     const user = await User.findByIdAndUpdate(
       req.params.id,
       {
@@ -198,10 +312,6 @@ exports.blockUser = async (req, res, next) => {
       },
       { new: true, runValidators: true }
     );
-
-    if (!user) {
-      return next(new ErrorResponse('User not found', 404));
-    }
 
     // Send notification email
     const message = `Your account has been blocked by the admin. Reason: ${reason}`;
