@@ -1,5 +1,5 @@
 const SupportTicket = require('../models/SupportTicket');
-const Category = require('../models/Category');
+// const Category = require('../models/Category');
 const ErrorResponse = require('../utils/errorResponse');
 const sendEmail = require('../utils/emailSender');
 
@@ -9,12 +9,6 @@ const sendEmail = require('../utils/emailSender');
 exports.createTicket = async (req, res, next) => {
   try {
     const { name, email, phone, subject, category, description } = req.body;
-
-    // Verify category exists
-    const categoryExists = await Category.findById(category);
-    if (!categoryExists) {
-      return next(new ErrorResponse('Invalid category', 400));
-    }
 
     const ticket = await SupportTicket.create({
       name,
@@ -126,23 +120,6 @@ exports.updateTicketStatus = async (req, res, next) => {
     res.status(200).json({
       success: true,
       data: ticket
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-
-// @desc    Get ticket categories
-// @route   GET /api/support/categories
-// @access  Public
-exports.getTicketCategories = async (req, res, next) => {
-  try {
-    const categories = await Category.find().select('title slug');
-
-    res.status(200).json({
-      success: true,
-      count: categories.length,
-      data: categories
     });
   } catch (err) {
     next(err);

@@ -27,9 +27,8 @@ const supportTicketSchema = new mongoose.Schema({
     maxlength: [100, 'Subject cannot be more than 100 characters']
   },
   category: {
-    type: mongoose.Schema.ObjectId,
-    ref: 'Category',
-    required: [true, 'Please select a category']
+    type:String,
+    required: [true, 'Please provide the category'],
   },
   description: {
     type: String,
