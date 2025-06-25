@@ -4,6 +4,8 @@ const {
   getVendors,
   approveVendor,
   createCategory,
+  updateCategory,
+  deleteCategory,
   getCategories,
   getOffers,
   getOffer,
