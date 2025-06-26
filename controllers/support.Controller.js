@@ -1,7 +1,9 @@
-const SupportTicket = require('../models/SupportTicket');
-const Category = require('../models/Category');
-const ErrorResponse = require('../utils/errorResponse');
-const sendEmail = require('../utils/emailSender');
+const SupportTicket = require("../models/SupportTicket");
+const Category = require("../models/Category");
+const ErrorResponse = require("../utils/errorResponse");
+const sendEmail = require("../utils/emailSender");
+const supportTicketConfirmationTemplate = require("../utils/emailTemplates/supportTicketConfirmationTemplate");
+const supportTicketStatusUpdateTemplate = require("../utils/emailTemplates/supportTicketStatusUpdateTemplate");
 
 // @desc    Create new support ticket
 // @route   POST /api/support
@@ -13,7 +15,7 @@ exports.createTicket = async (req, res, next) => {
     // Verify category exists
     const categoryExists = await Category.findById(category);
     if (!categoryExists) {
-      return next(new ErrorResponse('Invalid category', 400));
+      return next(new ErrorResponse("Invalid category", 400));
     }
 
     const ticket = await SupportTicket.create({
@@ -23,7 +25,7 @@ exports.createTicket = async (req, res, next) => {
       subject,
       category,
       description,
-      user: req.user?.id // Optional - if user is logged in
+      user: req.user?.id, // Optional - if user is logged in
     });
 
     // Send confirmation email
@@ -31,12 +33,17 @@ exports.createTicket = async (req, res, next) => {
     await sendEmail({
       email: ticket.email,
       subject: `Support Ticket Created: ${ticket.subject}`,
-      message
+      html: supportTicketConfirmationTemplate({
+        name: ticket.name,
+        ticketId: ticket._id.toString(),
+        subject: ticket.subject,
+        companyLogoUrl: "https://your-cloudinary-url.com/company-logo.png",
+      }),
     });
 
     res.status(201).json({
       success: true,
-      data: ticket
+      data: ticket,
     });
   } catch (err) {
     next(err);
@@ -49,14 +56,14 @@ exports.createTicket = async (req, res, next) => {
 exports.getTickets = async (req, res, next) => {
   try {
     const tickets = await SupportTicket.find()
-      .populate('category', 'title')
-      .populate('user', 'name email')
-      .sort('-createdAt');
+      .populate("category", "title")
+      .populate("user", "name email")
+      .sort("-createdAt");
 
     res.status(200).json({
       success: true,
       count: tickets.length,
-      data: tickets
+      data: tickets,
     });
   } catch (err) {
     next(err);
@@ -69,24 +76,24 @@ exports.getTickets = async (req, res, next) => {
 exports.getTicket = async (req, res, next) => {
   try {
     const ticket = await SupportTicket.findById(req.params.id)
-      .populate('category', 'title')
-      .populate('user', 'name email');
+      .populate("category", "title")
+      .populate("user", "name email");
 
     if (!ticket) {
-      return next(new ErrorResponse('Ticket not found', 404));
+      return next(new ErrorResponse("Ticket not found", 404));
     }
 
     // Only allow admin or ticket owner to view
     if (
-      req.user.role !== 'admin' && 
+      req.user.role !== "admin" &&
       (!ticket.user || ticket.user._id.toString() !== req.user.id)
     ) {
-      return next(new ErrorResponse('Not authorized to view this ticket', 401));
+      return next(new ErrorResponse("Not authorized to view this ticket", 401));
     }
 
     res.status(200).json({
       success: true,
-      data: ticket
+      data: ticket,
     });
   } catch (err) {
     next(err);
@@ -105,12 +112,12 @@ exports.updateTicketStatus = async (req, res, next) => {
       { status },
       {
         new: true,
-        runValidators: true
+        runValidators: true,
       }
-    ).populate('user', 'name email');
+    ).populate("user", "name email");
 
     if (!ticket) {
-      return next(new ErrorResponse('Ticket not found', 404));
+      return next(new ErrorResponse("Ticket not found", 404));
     }
 
     // Send status update email if user exists
@@ -119,13 +126,19 @@ exports.updateTicketStatus = async (req, res, next) => {
       await sendEmail({
         email: ticket.user.email,
         subject: `Support Ticket Update: ${ticket.subject}`,
-        message
+        html: supportTicketStatusUpdateTemplate({
+          userName: ticket.user.name,
+          ticketId: ticket._id.toString(),
+          subject: ticket.subject,
+          status,
+          companyLogoUrl: "https://your-cloudinary-url.com/company-logo.png",
+        }),
       });
     }
 
     res.status(200).json({
       success: true,
-      data: ticket
+      data: ticket,
     });
   } catch (err) {
     next(err);
@@ -137,12 +150,12 @@ exports.updateTicketStatus = async (req, res, next) => {
 // @access  Public
 exports.getTicketCategories = async (req, res, next) => {
   try {
-    const categories = await Category.find().select('title slug');
+    const categories = await Category.find().select("title slug");
 
     res.status(200).json({
       success: true,
       count: categories.length,
-      data: categories
+      data: categories,
     });
   } catch (err) {
     next(err);

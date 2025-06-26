@@ -7,6 +7,10 @@ const crypto = require("crypto");
 
 // Add these imports at the top (replace firebase import)
 const twilio = require("twilio");
+const vendorApprovedEmailTemplate = require("../utils/emailTemplates/vendorApprovedEmailTemplate");
+const vendorApprovalStatusTemplate = require("../utils/emailTemplates/vendorApprovalStatusTemplate");
+const passwordResetOtpTemplate = require("../utils/emailTemplates/passwordResetOtpTemplate");
+const passwordUpdatedTemplate = require("../utils/emailTemplates/passwordUpdatedTemplate");
 const client = twilio(
   process.env.TWILIO_ACCOUNT_SID,
   process.env.TWILIO_AUTH_TOKEN
@@ -29,7 +33,8 @@ exports.register = async (req, res, next) => {
     }
 
     // Handle profile photo upload
-    let profilePhoto = "https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png";
+    let profilePhoto =
+      "https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png";
     if (req.file) {
       profilePhoto = req.file.path;
     }
@@ -372,27 +377,29 @@ exports.login = async (req, res, next) => {
   try {
     // Check if email and password exist
     if (!email || !password) {
-      return next(new ErrorResponse('Please provide email and password', 400));
+      return next(new ErrorResponse("Please provide email and password", 400));
     }
 
     // Check if user exists and password is correct
-    const user = await User.findOne({ email })
-      .select('+password')
-      
+    const user = await User.findOne({ email }).select("+password");
 
     if (!user || !(await user.comparePassword(password, user.password))) {
-      return next(new ErrorResponse('Incorrect email or password', 401));
+      return next(new ErrorResponse("Incorrect email or password", 401));
     }
 
     // Check if user is blocked
     if (user.isBlocked) {
       const blockInfo = user.blockDetails;
-      return next(new ErrorResponse(
-        `Your account has been blocked by admin. Reason: ${blockInfo.reason || 'Not specified'}. ` +
-        `Blocked on: ${blockInfo.blockedAt.toLocaleString()}. ` +
-        'Please check your registered email for more details.',
-        403
-      ));
+      return next(
+        new ErrorResponse(
+          `Your account has been blocked by admin. Reason: ${
+            blockInfo.reason || "Not specified"
+          }. ` +
+            `Blocked on: ${blockInfo.blockedAt.toLocaleString()}. ` +
+            "Please check your registered email for more details.",
+          403
+        )
+      );
     }
 
     // Check if phone number is verified (optional)
@@ -407,21 +414,21 @@ exports.login = async (req, res, next) => {
     // }
 
     // Check if vendor is approved
-    if (user.role === 'vendor' && !user.isApproved) {
+    if (user.role === "vendor" && !user.isApproved) {
       return res.status(200).json({
         success: false,
-        message: 'Your vendor account is pending admin approval. ' +
-                 'You will be notified via email once approved.',
-        isVendorPendingApproval: true
+        message:
+          "Your vendor account is pending admin approval. " +
+          "You will be notified via email once approved.",
+        isVendorPendingApproval: true,
       });
     }
 
     // Successful login
     createSendToken(user, 200, res);
-
   } catch (err) {
-    console.error('Error in login:', err);
-    next(new ErrorResponse('Login failed. Please try again later.', 500));
+    console.error("Error in login:", err);
+    next(new ErrorResponse("Login failed. Please try again later.", 500));
   }
 };
 // @desc    Logout user
@@ -673,7 +680,10 @@ exports.updateUser = async (req, res, next) => {
       await sendEmail({
         email: updatedUser.email,
         subject: "Vendor Account Approved",
-        message,
+        html: vendorApprovedEmailTemplate({
+          vendorName: updatedUser.name,
+          companyLogoUrl: "https://your-cloudinary-url.com/company-logo.png",
+        }),
       });
     }
 
@@ -752,7 +762,11 @@ exports.updateVendorApproval = async (req, res, next) => {
       subject: isApproved
         ? "Vendor Account Approved"
         : "Vendor Account Rejected",
-      message,
+      html: vendorApprovalStatusTemplate({
+        vendorName: user.name,
+        isApproved,
+        companyLogoUrl: "https://your-cloudinary-url.com/company-logo.png",
+      }),
     });
 
     res.status(200).json({
@@ -792,8 +806,12 @@ exports.forgotPassword = async (req, res, next) => {
     try {
       await sendEmail({
         email: user.email,
-        subject: "Your password reset OTP (valid for 10 min)",
-        message,
+        subject: "Your Password Reset OTP (valid for 10 min)",
+        html: passwordResetOtpTemplate({
+          userName: user.name,
+          otp,
+          companyLogoUrl: "https://your-cloudinary-url.com/company-logo.png", // replace with actual logo URL
+        }),
       });
 
       res.status(200).json({
@@ -846,8 +864,11 @@ exports.resetPassword = async (req, res, next) => {
 
     await sendEmail({
       email: user.email,
-      subject: "Password updated successfully",
-      message,
+      subject: "Password Updated Successfully",
+      html: passwordUpdatedTemplate({
+        userName: user.name,
+        companyLogoUrl: "https://your-cloudinary-url.com/company-logo.png", // replace with actual logo URL
+      }),
     });
 
     // 5) Log the user in by sending token

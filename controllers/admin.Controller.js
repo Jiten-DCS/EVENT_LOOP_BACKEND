@@ -1,20 +1,23 @@
-const User = require('../models/User');
-const Category = require('../models/Category');
-const Offer = require('../models/Offer');
-const ErrorResponse = require('../utils/errorResponse');
-const sendEmail = require('../utils/emailSender');
+const User = require("../models/User");
+const Category = require("../models/Category");
+const Offer = require("../models/Offer");
+const ErrorResponse = require("../utils/errorResponse");
+const sendEmail = require("../utils/emailSender");
+const vendorStatusEmailTemplate = require("../utils/emailTemplates/vendorStatusEmailTemplate");
+const accountBlockedEmailTemplate = require("../utils/emailTemplates/accountBlockedEmailTemplate");
+const accountUnblockedEmailTemplate = require("../utils/emailTemplates/accountUnblockedEmailTemplate");
 
 // @desc    Get all vendors (for admin)
 // @route   GET /api/admin/vendors
 // @access  Private (Admin only)
 exports.getVendors = async (req, res, next) => {
   try {
-    const vendors = await User.find({ role: 'vendor' }).select('-password');
+    const vendors = await User.find({ role: "vendor" }).select("-password");
 
     res.status(200).json({
       success: true,
       count: vendors.length,
-      data: vendors
+      data: vendors,
     });
   } catch (err) {
     next(err);
@@ -33,25 +36,31 @@ exports.approveVendor = async (req, res, next) => {
       { isApproved },
       {
         new: true,
-        runValidators: true
+        runValidators: true,
       }
-    ).select('-password');
+    ).select("-password");
 
-    if (!vendor || vendor.role !== 'vendor') {
-      return next(new ErrorResponse('Vendor not found', 404));
+    if (!vendor || vendor.role !== "vendor") {
+      return next(new ErrorResponse("Vendor not found", 404));
     }
 
     // Send notification email to vendor
-    const message = `Your vendor account has been ${isApproved ? 'approved' : 'rejected'} by the admin.`;
+    const message = `Your vendor account has been ${
+      isApproved ? "approved" : "rejected"
+    } by the admin.`;
     await sendEmail({
       email: vendor.email,
-      subject: 'Vendor Account Status Update',
-      message
+      subject: "Vendor Account Status Update",
+      html: vendorStatusEmailTemplate({
+        vendorName: vendor.name,
+        isApproved,
+        companyLogoUrl: "https://your-cloudinary-url.com/company-logo.png", // replace with your logo URL
+      }),
     });
 
     res.status(200).json({
       success: true,
-      data: vendor
+      data: vendor,
     });
   } catch (err) {
     next(err);
@@ -68,14 +77,17 @@ exports.createCategory = async (req, res, next) => {
     // Ensure subCategories is an array
     let subCategories = req.body.subCategories;
     if (!subCategories) subCategories = [];
-    else if (typeof subCategories === 'string') {
+    else if (typeof subCategories === "string") {
       // Try parsing JSON array format, e.g. '["a","b"]'
       try {
         const parsed = JSON.parse(subCategories);
         subCategories = Array.isArray(parsed) ? parsed : [parsed];
       } catch {
         // Fallback: comma-separated string
-        subCategories = subCategories.split(',').map(s => s.trim()).filter(Boolean);
+        subCategories = subCategories
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
       }
     }
 
@@ -83,24 +95,23 @@ exports.createCategory = async (req, res, next) => {
 
     // Check for uploaded image
     if (!req.file) {
-      return next(new ErrorResponse('Please upload a category image', 400));
+      return next(new ErrorResponse("Please upload a category image", 400));
     }
 
     const category = await Category.create({
       title,
       subCategories,
-      image: req.file.path
+      image: req.file.path,
     });
 
     res.status(201).json({
       success: true,
-      data: category
+      data: category,
     });
   } catch (err) {
     next(err);
   }
 };
-
 
 // @desc    Get all categories
 // @route   GET /api/admin/categories
@@ -112,13 +123,12 @@ exports.getCategories = async (req, res, next) => {
     res.status(200).json({
       success: true,
       count: categories.length,
-      data: categories
+      data: categories,
     });
   } catch (err) {
     next(err);
   }
 };
-
 
 // @desc    Update category
 // @route   PUT /api/admin/categories/:id
@@ -136,12 +146,15 @@ exports.updateCategory = async (req, res, next) => {
     // Handle subCategories update
     if (subCategories) {
       let processedSubCategories = subCategories;
-      if (typeof subCategories === 'string') {
+      if (typeof subCategories === "string") {
         try {
           const parsed = JSON.parse(subCategories);
           processedSubCategories = Array.isArray(parsed) ? parsed : [parsed];
         } catch {
-          processedSubCategories = subCategories.split(',').map(s => s.trim()).filter(Boolean);
+          processedSubCategories = subCategories
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
         }
       }
       updateData.subCategories = processedSubCategories;
@@ -150,7 +163,7 @@ exports.updateCategory = async (req, res, next) => {
     // Handle image update if new file uploaded
     if (req.file) {
       updateData.image = req.file.path;
-      
+
       // Optionally delete old image from storage
       // const oldCategory = await Category.findById(req.params.id);
       // if (oldCategory.image) {
@@ -165,17 +178,17 @@ exports.updateCategory = async (req, res, next) => {
       updateData,
       {
         new: true,
-        runValidators: true
+        runValidators: true,
       }
     );
 
     if (!category) {
-      return next(new ErrorResponse('Category not found', 404));
+      return next(new ErrorResponse("Category not found", 404));
     }
 
     res.status(200).json({
       success: true,
-      data: category
+      data: category,
     });
   } catch (err) {
     next(err);
@@ -190,7 +203,7 @@ exports.deleteCategory = async (req, res, next) => {
     const category = await Category.findByIdAndDelete(req.params.id);
 
     if (!category) {
-      return next(new ErrorResponse('Category not found', 404));
+      return next(new ErrorResponse("Category not found", 404));
     }
 
     // Delete associated image from storage
@@ -209,7 +222,7 @@ exports.deleteCategory = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      data: {}
+      data: {},
     });
   } catch (err) {
     next(err);
@@ -222,18 +235,18 @@ exports.deleteCategory = async (req, res, next) => {
 exports.getOffers = async (req, res, next) => {
   try {
     const { page = 1, limit = 10, active } = req.query;
-    
+
     let filter = {};
     if (active !== undefined) {
-      filter.isActive = active === 'true';
+      filter.isActive = active === "true";
     }
-    
+
     // Only show offers that are still valid
     filter.validTill = { $gte: new Date() };
 
     const offers = await Offer.find(filter)
-      .populate('vendor', 'name email')
-      .populate('service', 'title category location')
+      .populate("vendor", "name email")
+      .populate("service", "title category location")
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);
@@ -246,7 +259,7 @@ exports.getOffers = async (req, res, next) => {
       total,
       currentPage: parseInt(page),
       totalPages: Math.ceil(total / limit),
-      data: offers
+      data: offers,
     });
   } catch (err) {
     next(err);
@@ -259,22 +272,24 @@ exports.getOffers = async (req, res, next) => {
 exports.getOffer = async (req, res, next) => {
   try {
     const offer = await Offer.findById(req.params.id)
-      .populate('vendor', 'name email phone')
-      .populate('service', 'title description category subCategory location phone images');
+      .populate("vendor", "name email phone")
+      .populate(
+        "service",
+        "title description category subCategory location phone images"
+      );
 
     if (!offer) {
-      return next(new ErrorResponse('Offer not found', 404));
+      return next(new ErrorResponse("Offer not found", 404));
     }
 
     res.status(200).json({
       success: true,
-      data: offer
+      data: offer,
     });
   } catch (err) {
     next(err);
   }
 };
-
 
 // @desc    Block a user
 // @route   PUT /api/admin/users/:id/block
@@ -284,19 +299,19 @@ exports.blockUser = async (req, res, next) => {
     const { reason } = req.body;
 
     if (!reason) {
-      return next(new ErrorResponse('Reason is required', 400));
+      return next(new ErrorResponse("Reason is required", 400));
     }
 
     // First find the user to check their role
     const userToBlock = await User.findById(req.params.id);
-    
+
     if (!userToBlock) {
-      return next(new ErrorResponse('User not found', 404));
+      return next(new ErrorResponse("User not found", 404));
     }
 
     // Check if user is a vendor
-    if (userToBlock.role === 'vendor') {
-      return next(new ErrorResponse('Vendors cannot be blocked', 400));
+    if (userToBlock.role === "vendor") {
+      return next(new ErrorResponse("Vendors cannot be blocked", 400));
     }
 
     // Proceed with blocking if not a vendor
@@ -307,8 +322,8 @@ exports.blockUser = async (req, res, next) => {
         blockDetails: {
           blockedAt: Date.now(),
           blockedBy: req.user.id,
-          reason
-        }
+          reason,
+        },
       },
       { new: true, runValidators: true }
     );
@@ -317,13 +332,17 @@ exports.blockUser = async (req, res, next) => {
     const message = `Your account has been blocked by the admin. Reason: ${reason}`;
     await sendEmail({
       email: user.email,
-      subject: 'Account Blocked',
-      message
+      subject: "Account Blocked",
+      html: accountBlockedEmailTemplate({
+        userName: user.name,
+        reason,
+        companyLogoUrl: "https://your-cloudinary-url.com/company-logo.png", // replace with your logo URL
+      }),
     });
 
     res.status(200).json({
       success: true,
-      data: user
+      data: user,
     });
   } catch (err) {
     next(err);
@@ -340,28 +359,32 @@ exports.unblockUser = async (req, res, next) => {
       {
         isBlocked: false,
         $set: {
-          'blockDetails.unblockedAt': Date.now(),
-          'blockDetails.unblockedBy': req.user.id
-        }
+          "blockDetails.unblockedAt": Date.now(),
+          "blockDetails.unblockedBy": req.user.id,
+        },
       },
       { new: true, runValidators: true }
     );
 
     if (!user) {
-      return next(new ErrorResponse('User not found', 404));
+      return next(new ErrorResponse("User not found", 404));
     }
 
     // Send notification email
-    const message = 'Your account has been unblocked by the admin. You can now login and use the platform.';
-    await sendEmail({
-      email: user.email,
-      subject: 'Account Unblocked',
-      message
-    });
+    const message =
+      "Your account has been unblocked by the admin. You can now login and use the platform.";
+   await sendEmail({
+  email: user.email,
+  subject: "Account Unblocked",
+  html: accountUnblockedEmailTemplate({
+    userName: user.name,
+    companyLogoUrl: 'https://your-cloudinary-url.com/company-logo.png' // replace with your logo URL
+  })
+});
 
     res.status(200).json({
       success: true,
-      data: user
+      data: user,
     });
   } catch (err) {
     next(err);

@@ -3,6 +3,8 @@ const Payment = require("../models/Payment");
 const Booking = require("../models/Booking");
 const ErrorResponse = require("../utils/errorResponse");
 const sendEmail = require("../utils/emailSender"); // Add this import at the top if not already present
+const bookingConfirmedUserTemplate = require("../utils/emailTemplates/bookingConfirmedUserTemplate");
+const bookingConfirmedVendorTemplate = require("../utils/emailTemplates/bookingConfirmedVendorTemplate");
 
 // @desc    Create Razorpay order
 // @route   POST /api/payments/create-order
@@ -102,17 +104,27 @@ exports.verifyPayment = async (req, res, next) => {
     });
 
     // Send confirmation emails
-
     await sendEmail({
       email: booking.userEmail,
       subject: "Booking Confirmed - Payment Successful",
-      message: `Your booking for ${booking.service.title} has been confirmed. Payment of ₹${booking.amount} received.`,
+      html: bookingConfirmedUserTemplate({
+        userName: booking.userName,
+        serviceTitle: booking.service.title,
+        amount: booking.amount,
+        companyLogoUrl: "https://your-cloudinary-url.com/company-logo.png",
+      }),
     });
 
     await sendEmail({
       email: booking.vendor.email,
       subject: "Booking Confirmed - Payment Received",
-      message: `Booking from ${booking.userName} has been confirmed. Payment of ₹${booking.amount} received.`,
+      html: bookingConfirmedVendorTemplate({
+        vendorName: booking.vendor.name,
+        customerName: booking.userName,
+        serviceTitle: booking.service.title,
+        amount: booking.amount,
+        companyLogoUrl: "https://your-cloudinary-url.com/company-logo.png",
+      }),
     });
     // ========== END OF ADDITION ==========
 
