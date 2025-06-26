@@ -10,7 +10,7 @@ const {
 const { protect, authorize } = require('../middleware/authMiddleware');
 
 router.post('/',protect, createTicket);
-router.get('/categories',protect, getTicketCategories);
+// router.get('/categories',protect, getTicketCategories); 
 
 // Protected routes
 router.use(protect);

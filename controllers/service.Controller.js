@@ -375,6 +375,7 @@ exports.searchServices = async (req, res, next) => {
     // Step 1: Find services matching query
     const services = await Service.find(query)
       .populate("vendor", "name profilePhoto")
+        .populate("category", "title")
       .lean();
 
     // Step 2: Find active offers for found services
