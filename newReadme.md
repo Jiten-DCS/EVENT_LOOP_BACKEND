@@ -115,62 +115,64 @@ backend/
 
 ---
 
-## 🚦 API Routes Overview
+## 💼 API Endpoints
 
-### 🔑 Auth (controllers/auth.Controller.js)
+### Auth
 
-- POST `/register`, `/login`, `/logout`
-- POST `/send-otp`, `/verify-otp`, `/resend-login-otp`, `/verify-login-otp`
-- GET `/me`, PUT `/update-profile`, `/update-gallery`
-- Admin routes: GET/PUT/DELETE `/users`, PUT `/users/:id/approval`
-- OTP-based password reset: `/forgot-password`, `/reset-password`
+| Method | Endpoint               | Description             |
+| ------ | ---------------------- | ----------------------- |
+| POST   | /api/auth/login        | Admin login             |
+| POST   | /api/auth/create-admin | One-time admin creation |
+| GET    | /api/auth/verify       | Verify JWT              |
 
-### 🦾 Admin (controllers/admin.Controller.js)
+### Products
 
-- GET `/vendors`, PUT `/vendors/:id/approve` (sends email notification)
-- POST/GET/PUT/DELETE `/categories` (Admin adds category and subcategories)
-- GET `/offers`, `/offers/:id`
-- PUT `/users/:id/block`, `/users/:id/unblock` (Admin can block/unblock users)
+| Method | Endpoint                                     | Description                 |
+| ------ | -------------------------------------------- | --------------------------- |
+| GET    | /api/products                                | Get all products            |
+| GET    | /api/products/top-selling                    | Get top-selling products    |
+| POST   | /api/products                                | Create product (admin)      |
+| PUT    | /api/products/\:id                           | Update product (admin)      |
+| DELETE | /api/products/\:id                           | Delete product (admin)      |
+| DELETE | /api/products/\:id/images/\:imageId          | Remove a product image      |
+| PATCH  | /api/products/\:productId/top-selling/add    | Mark product as top-selling |
+| PATCH  | /api/products/\:productId/top-selling/remove | Remove from top-selling     |
 
-### 💳 Booking (controllers/booking.Controller.js)
+### Categories
 
-- POST `/` (create booking)
-- GET `/vendor/:id`, `/user/:id`
-- PUT `/:id/status`
+| Method | Endpoint             | Description         |
+| ------ | -------------------- | ------------------- |
+| GET    | /api/categories      | List all categories |
+| POST   | /api/categories      | Add new category    |
+| PUT    | /api/categories/\:id | Update category     |
+| DELETE | /api/categories/\:id | Delete category     |
 
-### 🏡 Offers (controllers/vendor.Controller.js)
+### Subcategories & Content
 
-- POST `/` (create), GET `/my-offers`
-- PUT/DELETE `/:id`, PUT `/:id/toggle-status`
+| Method | Endpoint                                                               | Description             |
+| ------ | ---------------------------------------------------------------------- | ----------------------- |
+| PUT    | /api/categories/\:categoryName/subcategories                           | Add subcategory         |
+| DELETE | /api/categories/\:categoryName/subcategories/\:subCategory             | Remove subcategory      |
+| GET    | /api/categories/\:categoryName/subcategories/\:subCategoryName/content | Get subcategory content |
+| POST   | same URL                                                               | Add content item        |
+| PUT    | same URL + \:contentId                                                 | Update content          |
+| DELETE | same URL + \:contentId                                                 | Delete content          |
 
-### 💰 Payments (controllers/payment.Controller.js)
+### Previous Work
 
-- POST `/create-order`, `/verify`
+| Method | Endpoint                 | Description                |
+| ------ | ------------------------ | -------------------------- |
+| GET    | /api/previous-works      | View previous work gallery |
+| POST   | /api/previous-works      | Add work (admin)           |
+| DELETE | /api/previous-works/\:id | Delete work (admin)        |
 
-### ⭐ Reviews (controllers/review\.Controller.js)
+### Banners
 
-- GET `/service/:serviceId`, `/vendor/:vendorId`
-- POST/PUT/DELETE `/`
-
-### 🛠️ Services (controllers/service.Controller.js)
-
-- POST `/`, GET `/vendor/:vendorId`, PUT/DELETE `/:id`
-- GET `/category/:category`, `/search`, `/all`, `/:id`
-
-### 🎫 Support (controllers/support.Controller.js)
-
-- POST `/`, GET `/`, `/:id`, PUT `/:id/status`
-- Email sent on ticket status change
-
-### ❤️ Wishlist (controllers/wishlist.Controller.js)
-
-- GET `/`, POST/DELETE `/:serviceId`
-
-### 👤 Vendor Public (controllers/vendor.Controller.js)
-
-- GET `/`, `/:id`
-- PUT `/:id` (update profile)
-- POST/DELETE `/:id/gallery`, `/gallery/delete`
+| Method | Endpoint          | Description           |
+| ------ | ----------------- | --------------------- |
+| GET    | /api/banners      | Get all banners       |
+| POST   | /api/banners      | Add banner (admin)    |
+| DELETE | /api/banners/\:id | Delete banner (admin) |
 
 ---
 
