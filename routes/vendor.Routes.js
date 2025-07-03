@@ -1,4 +1,3 @@
-// routes/vendorRoutes.js
 const express = require('express');
 const router = express.Router();
 const {
@@ -7,13 +6,20 @@ const {
   updateVendor,
   uploadGalleryImages,
   deleteGalleryImage
-} = require('../controllers/vendor.Controller'); // Make sure case matches your file name
-const { protect, authorize } = require('../middleware/authMiddleware'); // Correct path
+} = require('../controllers/vendor.Controller');
+const { protect, authorize } = require('../middleware/authMiddleware');
 const { uploadMultipleImages } = require('../middleware/uploadMiddleware');
 
+// Get all vendors (public)
 router.get('/', getVendors);
+
+// Get specific vendor (public)
 router.get('/:id', getVendor);
+
+// Update vendor (protected)
 router.put('/:id', protect, authorize('vendor', 'admin'), updateVendor);
+
+// Upload gallery images (protected)
 router.post(
   '/:id/gallery',
   protect,
@@ -21,8 +27,8 @@ router.post(
   uploadMultipleImages,
   uploadGalleryImages
 );
-// ❌ Delete one image from gallery (expects image URL in body)
-router.delete('/:id/gallery/delete',protect, authorize('vendor'), deleteGalleryImage);
 
+// Delete gallery image (protected)
+router.delete('/:id/gallery/delete', protect, authorize('vendor'), deleteGalleryImage);
 
 module.exports = router;

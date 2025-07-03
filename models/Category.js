@@ -1,3 +1,4 @@
+// models/Category.js
 const mongoose = require('mongoose');
 
 const categorySchema = new mongoose.Schema({
@@ -17,14 +18,16 @@ const categorySchema = new mongoose.Schema({
     required: [true, 'Please provide a category image']
   },
   subCategories: [String],
+  config: {
+    type: mongoose.Schema.Types.Mixed // dynamic form structure per category
+  },
   createdAt: {
     type: Date,
     default: Date.now
   }
 });
 
-// Generate slug before saving
-categorySchema.pre('save', function(next) {
+categorySchema.pre('save', function (next) {
   this.slug = this.title.toLowerCase().split(' ').join('-');
   next();
 });

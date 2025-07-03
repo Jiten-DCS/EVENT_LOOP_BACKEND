@@ -11,7 +11,8 @@ const Offer = require("../models/Offer");
 // @access  Private (Vendor only)
 exports.createService = async (req, res, next) => {
   try {
-    // Check if vendor is approved
+
+        // Check if vendor is approved
     if (!req.user.isApproved) {
       return next(new ErrorResponse("Vendor not approved by admin yet", 403));
     }
@@ -27,10 +28,13 @@ exports.createService = async (req, res, next) => {
       phone,
       website,
       socialLinks,
+      details,
+      faqs, // <-- NEW
     } = req.body;
 
     let tags = req.body.tags;
 
+    
     // Validate images
     if (!req.files || req.files.length === 0) {
       return next(new ErrorResponse("Please upload at least one image", 400));
@@ -41,18 +45,11 @@ exports.createService = async (req, res, next) => {
       return next(new ErrorResponse("Invalid category", 400));
     }
 
-    // Verify subCategory is valid for this category
     if (!categoryExists.subCategories.includes(subCategory)) {
-      return next(
-        new ErrorResponse("Invalid sub-category for selected category", 400)
-      );
+      return next(new ErrorResponse("Invalid sub-category for selected category", 400));
     }
 
-    // Images are already uploaded by multer-storage-cloudinary
-    // req.files contains the array of uploaded file objects, file.path is the Cloudinary URL
-    const images = req.files.map((file) => file.path);
-
-    // Normalize tags to array
+    // 🏷️ Handle tags
     if (!tags) tags = [];
     else if (typeof tags === "string") {
       try {
@@ -64,6 +61,42 @@ exports.createService = async (req, res, next) => {
           .map((tag) => tag.trim())
           .filter(Boolean);
       }
+    }
+
+    // 🔍 Parse details if it's a string
+    let parsedDetails = {};
+    if (typeof details === "string") {
+      try {
+        parsedDetails = JSON.parse(details);
+      } catch {
+        return next(new ErrorResponse("Invalid details format", 400));
+      }
+    } else if (typeof details === "object" && details !== null) {
+      parsedDetails = details;
+    }
+
+    // 🔍 Parse faqs if it's a string
+    let parsedFaqs = [];
+    if (typeof faqs === "string") {
+      try {
+        parsedFaqs = JSON.parse(faqs);
+      } catch {
+        return next(new ErrorResponse("Invalid FAQ format", 400));
+      }
+    } else if (Array.isArray(faqs)) {
+      parsedFaqs = faqs;
+    }
+
+       // Images are already uploaded by multer-storage-cloudinary
+    // req.files contains the array of uploaded file objects, file.path is the Cloudinary URL
+    const images = req.files.map((file) => file.path);
+
+    // ✅ Validate each FAQ object
+    const isValidFaqs = parsedFaqs.every(
+      (faq) => faq.question && faq.answer && typeof faq.question === "string" && typeof faq.answer === "string"
+    );
+    if (!isValidFaqs) {
+      return next(new ErrorResponse("Each FAQ must have a valid 'question' and 'answer'", 400));
     }
 
     const service = await Service.create({
@@ -80,21 +113,24 @@ exports.createService = async (req, res, next) => {
       phone,
       website,
       socialLinks,
+      details: parsedDetails,
+      faqs: parsedFaqs // <-- SAVE HERE
     });
 
-    // Add service to vendor's services array
     await User.findByIdAndUpdate(req.user.id, {
-      $push: { services: service._id },
+      $push: { services: service._id }
     });
 
     res.status(201).json({
       success: true,
-      data: service,
+      data: service
     });
   } catch (err) {
     next(err);
   }
 };
+
+
 
 // @desc    Get vendor's services
 // @route   GET /api/services/vendor/:vendorId
@@ -171,7 +207,7 @@ exports.updateService = async (req, res, next) => {
       }
     }
 
-    // Optional: Validate subCategory if category or subCategory changed
+    // Validate subCategory if category/subCategory updated
     if (req.body.category || req.body.subCategory) {
       const categoryId = req.body.category || service.category;
       const subCategoryToCheck = req.body.subCategory || service.subCategory;
@@ -188,11 +224,11 @@ exports.updateService = async (req, res, next) => {
       }
     }
 
-    // Handle image updates
+    // Handle image uploads
     let images = service.images;
     if (req.files && req.files.length > 0) {
       const newImages = req.files.map((file) => file.path);
-      images = [...service.images, ...newImages];
+      images = [...images, ...newImages];
 
       if (images.length > 6) {
         return next(
@@ -204,41 +240,77 @@ exports.updateService = async (req, res, next) => {
       }
     }
 
-    // Normalize tags if present
-    if (req.body.tags) {
-      if (typeof req.body.tags === "string") {
-        try {
-          const parsed = JSON.parse(req.body.tags);
-          req.body.tags = Array.isArray(parsed) ? parsed : [parsed];
-        } catch {
-          req.body.tags = req.body.tags
-            .split(",")
-            .map((tag) => tag.trim())
-            .filter(Boolean);
-        }
-      }
-    }
-    // Convert price strings to numbers to avoid validation error
+    // Convert price to numbers
     if (req.body.minPrice) req.body.minPrice = Number(req.body.minPrice);
     if (req.body.maxPrice) req.body.maxPrice = Number(req.body.maxPrice);
 
-    // Prevent vendor field from being changed
+    // Parse details if provided
+    if (req.body.details) {
+      if (typeof req.body.details === "string") {
+        try {
+          req.body.details = JSON.parse(req.body.details);
+        } catch {
+          return next(new ErrorResponse("Invalid details format", 400));
+        }
+      }
+
+      if (typeof service.details === "object") {
+        req.body.details = {
+          ...service.details,
+          ...req.body.details
+        };
+      }
+    }
+
+    // ✅ Parse and merge FAQs if provided
+    if (req.body.faqs) {
+      let parsedFaqs = [];
+
+      if (typeof req.body.faqs === "string") {
+        try {
+          parsedFaqs = JSON.parse(req.body.faqs);
+        } catch {
+          return next(new ErrorResponse("Invalid FAQ format", 400));
+        }
+      } else if (Array.isArray(req.body.faqs)) {
+        parsedFaqs = req.body.faqs;
+      }
+
+      const isValidFaqs = parsedFaqs.every(
+        (faq) =>
+          faq.question &&
+          faq.answer &&
+          typeof faq.question === "string" &&
+          typeof faq.answer === "string"
+      );
+
+      if (!isValidFaqs) {
+        return next(
+          new ErrorResponse("Each FAQ must have a valid 'question' and 'answer'", 400)
+        );
+      }
+
+      req.body.faqs = parsedFaqs; // Replace entire FAQ set (or merge logic could be added)
+    }
+
+    // Prevent vendor field from being modified
     delete req.body.vendor;
 
-    // Set the new values to the existing service doc
+    // Final update
     service.set({ ...req.body, images });
 
-    // Save to trigger proper validation
     await service.save();
 
     res.status(200).json({
       success: true,
-      data: service,
+      data: service
     });
   } catch (err) {
     next(err);
   }
 };
+
+
 
 // @desc    Delete service
 // @route   DELETE /api/services/:id

@@ -9,14 +9,19 @@ const {
 } = require('../controllers/support.Controller');
 const { protect, authorize } = require('../middleware/authMiddleware');
 
-router.post('/',protect, createTicket);
-// router.get('/categories',protect, getTicketCategories); 
+// Create ticket (protected)
+router.post('/', protect, createTicket);
 
-// Protected routes
-router.use(protect);
+// Get ticket categories (if needed)
+// router.get('/categories', protect, getTicketCategories); 
 
-router.get('/',protect, authorize('admin'), getTickets);
-router.get('/:id',protect, getTicket);
-router.put('/:id/status',protect, authorize('admin'), updateTicketStatus);
+// Get all tickets (admin only)
+router.get('/', protect, authorize('admin'), getTickets);
+
+// Get specific ticket
+router.get('/:id', protect, getTicket);
+
+// Update ticket status (admin only)
+router.put('/:id/status', protect, authorize('admin'), updateTicketStatus);
 
 module.exports = router;

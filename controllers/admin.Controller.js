@@ -72,26 +72,22 @@ exports.approveVendor = async (req, res, next) => {
 // @access  Private (Admin only)
 exports.createCategory = async (req, res, next) => {
   try {
-    const { title } = req.body;
+    const { title, config } = req.body;
 
-    // Ensure subCategories is an array
+    // Handle subCategories
     let subCategories = req.body.subCategories;
     if (!subCategories) subCategories = [];
     else if (typeof subCategories === "string") {
-      // Try parsing JSON array format, e.g. '["a","b"]'
       try {
         const parsed = JSON.parse(subCategories);
         subCategories = Array.isArray(parsed) ? parsed : [parsed];
       } catch {
-        // Fallback: comma-separated string
         subCategories = subCategories
           .split(",")
           .map((s) => s.trim())
           .filter(Boolean);
       }
     }
-
-    console.log({ title, subCategories });
 
     // Check for uploaded image
     if (!req.file) {
@@ -102,16 +98,18 @@ exports.createCategory = async (req, res, next) => {
       title,
       subCategories,
       image: req.file.path,
+      config: config ? JSON.parse(config) : {} // Accept config as JSON string or object
     });
 
     res.status(201).json({
       success: true,
-      data: category,
+      data: category
     });
   } catch (err) {
     next(err);
   }
 };
+
 
 // @desc    Get all categories
 // @route   GET /api/admin/categories
@@ -135,12 +133,13 @@ exports.getCategories = async (req, res, next) => {
 // @access  Private (Admin only)
 exports.updateCategory = async (req, res, next) => {
   try {
-    const { title, subCategories } = req.body;
+    const { title, subCategories, config } = req.body;
     const updateData = {};
 
     // Handle title update
     if (title) {
       updateData.title = title;
+      updateData.slug = title.toLowerCase().split(" ").join("-");
     }
 
     // Handle subCategories update
@@ -160,16 +159,27 @@ exports.updateCategory = async (req, res, next) => {
       updateData.subCategories = processedSubCategories;
     }
 
-    // Handle image update if new file uploaded
+    // Handle config update
+    if (config) {
+      if (typeof config === "string") {
+        try {
+          updateData.config = JSON.parse(config);
+        } catch {
+          return next(new ErrorResponse("Invalid config format", 400));
+        }
+      } else if (typeof config === "object") {
+        updateData.config = config;
+      }
+    }
+
+    // Handle image update
     if (req.file) {
       updateData.image = req.file.path;
 
-      // Optionally delete old image from storage
+      // Optional: delete old image from Cloudinary or other service
       // const oldCategory = await Category.findById(req.params.id);
       // if (oldCategory.image) {
-      //   // Add code here to delete the old image from your storage (Cloudinary, S3, etc.)
-      //   // Example for Cloudinary:
-      //   // await cloudinary.uploader.destroy(oldCategory.image);
+      //   await cloudinary.uploader.destroy(oldCategory.image);
       // }
     }
 
@@ -194,6 +204,7 @@ exports.updateCategory = async (req, res, next) => {
     next(err);
   }
 };
+
 
 // @desc    Delete category
 // @route   DELETE /api/admin/categories/:id

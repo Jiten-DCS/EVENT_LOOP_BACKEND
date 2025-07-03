@@ -215,7 +215,6 @@ graph TD
 
     %% User Management Module
     subgraph sg_Users [User Management]
-    
         Users_Manage[Manage Users]
         Users_View[View Users]
         Users_Update[Update User]
@@ -229,7 +228,6 @@ graph TD
 
     %% Vendor Management Module
     subgraph sg_Vendors [Vendor Management]
-        direction TD
         Vendors_Manage[Manage Vendors]
         Vendors_View[View Vendors]
         Vendors_ApproveReject[Approve/Reject Vendor]
@@ -241,7 +239,6 @@ graph TD
 
     %% Category Management Module
     subgraph sg_Categories [Category Management]
-        direction TD
         Categories_Manage[Manage Categories]
         Categories_Create[Create Category]
         Categories_View[View Categories]
@@ -252,9 +249,8 @@ graph TD
     AdminDashboard --> Categories_Manage
 
     %% Offer Management Module
-    subgraph sg_Offers [Offer Management (Platform)]
-        direction TD
-        Offers_ManagePlatform[Manage Offers (Platform)]
+    subgraph sg_Offers [Offer Management Platform]
+        Offers_ManagePlatform[Manage Offers Platform]
         Offers_ViewAll[View All Offers]
 
         Offers_ManagePlatform --> Offers_ViewAll
@@ -263,7 +259,6 @@ graph TD
 
     %% Booking Oversight Module
     subgraph sg_Bookings [Booking Oversight]
-        direction TD
         Bookings_Oversee[Oversee Bookings]
         Bookings_ViewUserVendor[View User/Vendor Bookings]
         Bookings_UpdateStatus[Update Booking Status]
@@ -275,7 +270,6 @@ graph TD
 
     %% Review Management Module
     subgraph sg_Reviews [Review Management]
-        direction TD
         Reviews_Manage[Manage Reviews]
         Reviews_ModerateDelete[Moderate/Delete Reviews]
 
@@ -283,16 +277,16 @@ graph TD
     end
     AdminDashboard --> Reviews_Manage
 
-    %% Styling (Optional: Enhances visual clarity and professionalism)
-    classDef module fill:#ececff,stroke:#9090ff,stroke-width:2px,color:#000033,font-weight:bold;
-    classDef action fill:#f9f9f9,stroke:#cccccc,stroke-width:1px,color:#333333;
-    classDef dashboard fill:#fff0e6,stroke:#ffb366,stroke-width:2px,color:#994d00,font-weight:bold;
-    classDef login fill:#e6ffe6,stroke:#80ff80,stroke-width:2px,color:#006600;
+    %% Styling
+    classDef module fill:#ececff,stroke:#9090ff,stroke-width:2px,color:#000033,font-weight:bold
+    classDef action fill:#f9f9f9,stroke:#cccccc,stroke-width:1px,color:#333333
+    classDef dashboard fill:#fff0e6,stroke:#ffb366,stroke-width:2px,color:#994d00,font-weight:bold
+    classDef login fill:#e6ffe6,stroke:#80ff80,stroke-width:2px,color:#006600
 
-    class AdminLogin login;
-    class AdminDashboard dashboard;
-    class Users_Manage,Vendors_Manage,Categories_Manage,Offers_ManagePlatform,Bookings_Oversee,Reviews_Manage module;
-    class Users_View,Users_Update,Users_Delete,Vendors_View,Vendors_ApproveReject,Categories_Create,Categories_View,Offers_ViewAll,Bookings_ViewUserVendor,Bookings_UpdateStatus,Reviews_ModerateDelete action;
+    class AdminLogin login
+    class AdminDashboard dashboard
+    class Users_Manage,Vendors_Manage,Categories_Manage,Offers_ManagePlatform,Bookings_Oversee,Reviews_Manage module
+    class Users_View,Users_Update,Users_Delete,Vendors_View,Vendors_ApproveReject,Categories_Create,Categories_View,Offers_ViewAll,Bookings_ViewUserVendor,Bookings_UpdateStatus,Reviews_ModerateDelete action
 ```
 
 ## 6. API Endpoints Summary

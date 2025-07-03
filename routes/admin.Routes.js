@@ -11,8 +11,6 @@ const {
   getOffer,
   blockUser,
   unblockUser,
-  updateCategory,
-  deleteCategory
 } = require("../controllers/admin.Controller");
 const { protect, authorize } = require("../middleware/authMiddleware");
 const { uploadSingleImage } = require("../middleware/uploadMiddleware");
