@@ -5,33 +5,51 @@ const ErrorResponse = require("../utils/errorResponse");
 const sendEmail = require("../utils/emailSender");
 const vendorBookingNotificationTemplate = require("../utils/emailTemplates/vendorBookingNotificationTemplate");
 const bookingStatusUpdateTemplate = require("../utils/emailTemplates/bookingStatusUpdateTemplate");
+const ServiceVariant = require("../models/ServiceVariant");
 
 // @desc    Create booking
 // @route   POST /api/bookings
 // @access  Private
+// NEW: require ServiceVariant
+
 exports.createBooking = async (req, res, next) => {
   try {
-    const { vendorId, serviceId, message, date } = req.body;
+    const { vendorId, serviceId, message, date, items } = req.body; // <-- NEW items
 
-    // Get service to get price
+    /*  VALIDATION SAME AS BEFORE  */
     const service = await Service.findById(serviceId);
-    if (!service) {
-      return next(new ErrorResponse("Service not found", 404));
-    }
-
-    // Check if vendor exists and is approved
+    if (!service) return next(new ErrorResponse("Service not found", 404));
     const vendor = await User.findById(vendorId);
-    if (!vendor || vendor.role !== "vendor" || !vendor.isApproved) {
+    if (!vendor || vendor.role !== "vendor" || !vendor.isApproved)
       return next(new ErrorResponse("Vendor not found", 404));
-    }
 
-    // Validate booking date (should be in future)
     const bookingDate = new Date(date);
-    if (bookingDate <= new Date()) {
+    if (bookingDate <= new Date())
       return next(new ErrorResponse("Booking date must be in the future", 400));
+
+    /*  NEW: build line items and totals  */
+    let subTotal = 0;
+    const bookingItems = [];
+
+    for (const it of items || []) {
+      const variant = await ServiceVariant.findById(it.variant);
+      if (!variant)
+        return next(new ErrorResponse(`Variant ${it.variant} not found`, 404));
+
+      const lineTotal = variant.price * it.quantity;
+      bookingItems.push({
+        variant: variant._id,
+        quantity: it.quantity,
+        unitPrice: variant.price,
+        lineTotal,
+      });
+      subTotal += lineTotal;
     }
 
-    // Create booking
+    const tax = Math.round(subTotal * 0.18); // example GST 18 %
+    const grandTotal = subTotal + tax;
+
+    /*  CREATE BOOKING  */
     const booking = await Booking.create({
       user: req.user.id,
       userName: req.user.name,
@@ -40,33 +58,33 @@ exports.createBooking = async (req, res, next) => {
       service: serviceId,
       message,
       date,
-      amount: service.maxPrice,
+      items: bookingItems,
+      subTotal,
+      tax,
+      grandTotal,
+      amount: grandTotal, // legacy field kept
     });
 
-    // Create Razorpay order immediately
+    /*  RAZORPAY ORDER  */
     const razorpay = require("../config/razorpay");
-    const Payment = require("../models/Payment");
-
-    const options = {
-      amount: service.maxPrice * 100, // amount in paise
+    const order = await razorpay.orders.create({
+      amount: grandTotal * 100,
       currency: "INR",
       receipt: `booking_${booking._id}`,
       payment_capture: 1,
-    };
+    });
 
-    const order = await razorpay.orders.create(options);
-
-    // Create payment record
-    const payment = await Payment.create({
+    const Payment = require("../models/Payment");
+    await Payment.create({
       vendor: vendorId,
       user: req.user.id,
       booking: booking._id,
-      amount: service.maxPrice,
+      amount: grandTotal,
       razorpayOrderId: order.id,
       receipt: order.receipt,
     });
 
-    // Send notification email to vendor
+     // Send notification email to vendor
     const messageToVendor = `You have a new booking request from ${req.user.name} for ${service.title} on ${date}. Payment is pending.`;
     await sendEmail({
       email: vendor.email,
@@ -76,9 +94,11 @@ exports.createBooking = async (req, res, next) => {
         customerName: req.user.name,
         serviceTitle: service.title,
         date,
-        companyLogoUrl: "https://your-cloudinary-url.com/company-logo.png", // replace with actual logo URL
+        companyLogoUrl: "https://your-cloudinary-url.com/company-logo.png   ", // replace with actual logo URL
       }),
     });
+
+
 
     res.status(201).json({
       success: true,
@@ -110,8 +130,9 @@ exports.getVendorBookings = async (req, res, next) => {
     }
 
     const bookings = await Booking.find({ vendor: req.params.id })
-      .populate("user", "name email")
-      .populate("service", "title price");
+  .populate("user", "name email")
+  .populate("service", "title")
+  .populate("items.variant", "name unit price"); // NEW
 
     res.status(200).json({
       success: true,
@@ -135,9 +156,10 @@ exports.getUserBookings = async (req, res, next) => {
       );
     }
 
-    const bookings = await Booking.find({ user: req.params.id })
-      .populate("vendor", "name email")
-      .populate("service", "title price");
+ const bookings = await Booking.find({ vendor: req.params.id })
+  .populate("user", "name email")
+  .populate("service", "title")
+  .populate("items.variant", "name unit price"); // NEW
 
     res.status(200).json({
       success: true,

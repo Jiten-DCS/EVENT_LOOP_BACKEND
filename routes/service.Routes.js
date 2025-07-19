@@ -17,7 +17,7 @@ router.post(
   '/', 
   protect, 
   authorize('vendor'), 
-  uploadMultipleImages, 
+  // uploadMultipleImages, 
   createService
 );
 router.get('/vendor/:vendorId', getVendorServices);

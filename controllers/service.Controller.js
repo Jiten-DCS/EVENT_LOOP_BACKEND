@@ -5,14 +5,35 @@ const { cloudinary } = require("../config/cloudinary");
 const Category = require("../models/Category");
 const mongoose = require("mongoose");
 const Offer = require("../models/Offer");
+const ServiceVariant = require("../models/ServiceVariant");
+
+// Replace all variants for a service with the new list
+const syncVariants = async (serviceId, rawVariants = []) => {
+  if (!Array.isArray(rawVariants)) return;
+
+  // Remove old ones
+  await ServiceVariant.deleteMany({ service: serviceId });
+
+  // Insert new ones
+  const variants = rawVariants.map((v) => ({
+    service: serviceId,
+    name: v.name,
+    unit: v.unit,
+    price: Number(v.price),
+    minQty: Number(v.minQty) || 1,
+    maxQty: v.maxQty ? Number(v.maxQty) : undefined,
+    isActive: true,
+  }));
+
+  if (variants.length) await ServiceVariant.insertMany(variants);
+};
 
 // @desc    Create new service
 // @route   POST /api/services
 // @access  Private (Vendor only)
 exports.createService = async (req, res, next) => {
   try {
-
-        // Check if vendor is approved
+    // Check if vendor is approved
     if (!req.user.isApproved) {
       return next(new ErrorResponse("Vendor not approved by admin yet", 403));
     }
@@ -34,7 +55,6 @@ exports.createService = async (req, res, next) => {
 
     let tags = req.body.tags;
 
-    
     // Validate images
     if (!req.files || req.files.length === 0) {
       return next(new ErrorResponse("Please upload at least one image", 400));
@@ -46,7 +66,9 @@ exports.createService = async (req, res, next) => {
     }
 
     if (!categoryExists.subCategories.includes(subCategory)) {
-      return next(new ErrorResponse("Invalid sub-category for selected category", 400));
+      return next(
+        new ErrorResponse("Invalid sub-category for selected category", 400)
+      );
     }
 
     // 🏷️ Handle tags
@@ -87,16 +109,25 @@ exports.createService = async (req, res, next) => {
       parsedFaqs = faqs;
     }
 
-       // Images are already uploaded by multer-storage-cloudinary
+    // Images are already uploaded by multer-storage-cloudinary
     // req.files contains the array of uploaded file objects, file.path is the Cloudinary URL
     const images = req.files.map((file) => file.path);
 
     // ✅ Validate each FAQ object
     const isValidFaqs = parsedFaqs.every(
-      (faq) => faq.question && faq.answer && typeof faq.question === "string" && typeof faq.answer === "string"
+      (faq) =>
+        faq.question &&
+        faq.answer &&
+        typeof faq.question === "string" &&
+        typeof faq.answer === "string"
     );
     if (!isValidFaqs) {
-      return next(new ErrorResponse("Each FAQ must have a valid 'question' and 'answer'", 400));
+      return next(
+        new ErrorResponse(
+          "Each FAQ must have a valid 'question' and 'answer'",
+          400
+        )
+      );
     }
 
     const service = await Service.create({
@@ -114,23 +145,28 @@ exports.createService = async (req, res, next) => {
       website,
       socialLinks,
       details: parsedDetails,
-      faqs: parsedFaqs // <-- SAVE HERE
+      faqs: parsedFaqs, // <-- SAVE HERE
+    });
+
+    // ➕  NEW
+    if (req.body.variants) await syncVariants(service._id, req.body.variants);
+
+    await User.findByIdAndUpdate(req.user.id, {
+      $push: { services: service._id },
     });
 
     await User.findByIdAndUpdate(req.user.id, {
-      $push: { services: service._id }
+      $push: { services: service._id },
     });
 
     res.status(201).json({
       success: true,
-      data: service
+      data: service,
     });
   } catch (err) {
     next(err);
   }
 };
-
-
 
 // @desc    Get vendor's services
 // @route   GET /api/services/vendor/:vendorId
@@ -142,26 +178,28 @@ exports.getVendorServices = async (req, res, next) => {
       .populate("category", "title")
       .lean();
 
-    const serviceIds = services.map(service => service._id);
+    const serviceIds = services.map((service) => service._id);
 
     // Step 2: Fetch active offers for these services
     const offers = await Offer.find({
       service: { $in: serviceIds },
       isActive: true,
       validFrom: { $lte: new Date() },
-      validTill: { $gte: new Date() }
-    }).select("service discountedPrice discountPercentage bannerImage").lean();
+      validTill: { $gte: new Date() },
+    })
+      .select("service discountedPrice discountPercentage bannerImage")
+      .lean();
 
     // Step 3: Create offer map
     const offerMap = new Map();
-    offers.forEach(offer => {
+    offers.forEach((offer) => {
       offerMap.set(offer.service.toString(), offer);
     });
 
     // Step 4: Attach offer to each service
-    const enrichedServices = services.map(service => ({
+    const enrichedServices = services.map((service) => ({
       ...service,
-      offer: offerMap.get(service._id.toString()) || null
+      offer: offerMap.get(service._id.toString()) || null,
     }));
 
     // Step 5: Return response
@@ -257,7 +295,7 @@ exports.updateService = async (req, res, next) => {
       if (typeof service.details === "object") {
         req.body.details = {
           ...service.details,
-          ...req.body.details
+          ...req.body.details,
         };
       }
     }
@@ -286,7 +324,10 @@ exports.updateService = async (req, res, next) => {
 
       if (!isValidFaqs) {
         return next(
-          new ErrorResponse("Each FAQ must have a valid 'question' and 'answer'", 400)
+          new ErrorResponse(
+            "Each FAQ must have a valid 'question' and 'answer'",
+            400
+          )
         );
       }
 
@@ -301,16 +342,19 @@ exports.updateService = async (req, res, next) => {
 
     await service.save();
 
+    // ➕  NEW
+    if (req.body.variants) await syncVariants(service._id, req.body.variants);
+
+    res.status(200).json({ success: true, data: service });
+
     res.status(200).json({
       success: true,
-      data: service
+      data: service,
     });
   } catch (err) {
     next(err);
   }
 };
-
-
 
 // @desc    Delete service
 // @route   DELETE /api/services/:id
@@ -339,6 +383,7 @@ exports.deleteService = async (req, res, next) => {
     await Promise.all(deletePromises);
 
     await service.deleteOne();
+    await ServiceVariant.deleteMany({ service: service._id }); // ➕ NEW
 
     // Remove service from vendor's services array
     await User.findByIdAndUpdate(req.user.id, {
@@ -447,7 +492,7 @@ exports.searchServices = async (req, res, next) => {
     // Step 1: Find services matching query
     const services = await Service.find(query)
       .populate("vendor", "name profilePhoto")
-        .populate("category", "title")
+      .populate("category", "title")
       .lean();
 
     // Step 2: Find active offers for found services
