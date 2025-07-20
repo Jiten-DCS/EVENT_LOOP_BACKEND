@@ -6,28 +6,30 @@ const sendEmail = require("../utils/emailSender");
 const vendorBookingNotificationTemplate = require("../utils/emailTemplates/vendorBookingNotificationTemplate");
 const bookingStatusUpdateTemplate = require("../utils/emailTemplates/bookingStatusUpdateTemplate");
 const ServiceVariant = require("../models/ServiceVariant");
+const Payment = require("../models/Payment");
 
 // @desc    Create booking
 // @route   POST /api/bookings
 // @access  Private
-// NEW: require ServiceVariant
-
 exports.createBooking = async (req, res, next) => {
   try {
-    const { vendorId, serviceId, message, date, items } = req.body; // <-- NEW items
+    const { vendorId, serviceId, message, date, items } = req.body;
 
-    /*  VALIDATION SAME AS BEFORE  */
+    // Validate service
     const service = await Service.findById(serviceId);
     if (!service) return next(new ErrorResponse("Service not found", 404));
+
+    // Validate vendor
     const vendor = await User.findById(vendorId);
     if (!vendor || vendor.role !== "vendor" || !vendor.isApproved)
       return next(new ErrorResponse("Vendor not found", 404));
 
+    // Validate date
     const bookingDate = new Date(date);
     if (bookingDate <= new Date())
       return next(new ErrorResponse("Booking date must be in the future", 400));
 
-    /*  NEW: build line items and totals  */
+    // Build line items and totals
     let subTotal = 0;
     const bookingItems = [];
 
@@ -36,9 +38,16 @@ exports.createBooking = async (req, res, next) => {
       if (!variant)
         return next(new ErrorResponse(`Variant ${it.variant} not found`, 404));
 
-      const lineTotal = variant.price * it.quantity;
+      // Guard: quantity must be > 0
+      if (!it.quantity || it.quantity <= 0)
+        return next(
+          new ErrorResponse("Quantity must be greater than zero", 400)
+        );
+
+      const lineTotal = Math.round(variant.price * it.quantity);
       bookingItems.push({
-        variant: variant._id,
+        name: variant.name, // ✅ add this
+        unit: variant.unit, // ✅ add this
         quantity: it.quantity,
         unitPrice: variant.price,
         lineTotal,
@@ -46,10 +55,10 @@ exports.createBooking = async (req, res, next) => {
       subTotal += lineTotal;
     }
 
-    const tax = Math.round(subTotal * 0.18); // example GST 18 %
+    const tax = Math.round(subTotal * 0.18); // 18 % GST example
     const grandTotal = subTotal + tax;
 
-    /*  CREATE BOOKING  */
+    // Create booking
     const booking = await Booking.create({
       user: req.user.id,
       userName: req.user.name,
@@ -62,19 +71,28 @@ exports.createBooking = async (req, res, next) => {
       subTotal,
       tax,
       grandTotal,
-      amount: grandTotal, // legacy field kept
+      amount: grandTotal,
     });
 
-    /*  RAZORPAY ORDER  */
+    // Razorpay order
     const razorpay = require("../config/razorpay");
-    const order = await razorpay.orders.create({
+    // const order = await razorpay.orders.create({
+    //   amount: grandTotal * 100, // paise
+    //   currency: "INR",
+    //   receipt: `booking_${booking._id}`,
+    //   payment_capture: 1,
+    // });
+
+    // Replace the Razorpay section
+    const order = {
+      id: `mock_${booking._id}`,
       amount: grandTotal * 100,
       currency: "INR",
       receipt: `booking_${booking._id}`,
-      payment_capture: 1,
-    });
+    };
+    // Do NOT call razorpay.orders.create(...)
 
-    const Payment = require("../models/Payment");
+    // Payment record
     await Payment.create({
       vendor: vendorId,
       user: req.user.id,
@@ -84,8 +102,7 @@ exports.createBooking = async (req, res, next) => {
       receipt: order.receipt,
     });
 
-     // Send notification email to vendor
-    const messageToVendor = `You have a new booking request from ${req.user.name} for ${service.title} on ${date}. Payment is pending.`;
+    // Email to vendor
     await sendEmail({
       email: vendor.email,
       subject: "New Booking Request - Payment Pending",
@@ -94,11 +111,9 @@ exports.createBooking = async (req, res, next) => {
         customerName: req.user.name,
         serviceTitle: service.title,
         date,
-        companyLogoUrl: "https://your-cloudinary-url.com/company-logo.png   ", // replace with actual logo URL
+        companyLogoUrl: "https://your-cloudinary-url.com/company-logo.png",
       }),
     });
-
-
 
     res.status(201).json({
       success: true,
@@ -130,9 +145,9 @@ exports.getVendorBookings = async (req, res, next) => {
     }
 
     const bookings = await Booking.find({ vendor: req.params.id })
-  .populate("user", "name email")
-  .populate("service", "title")
-  .populate("items.variant", "name unit price"); // NEW
+      .populate("user", "name email")
+      .populate("service", "title")
+      .populate("items.variant", "name unit price"); // NEW
 
     res.status(200).json({
       success: true,
@@ -156,10 +171,10 @@ exports.getUserBookings = async (req, res, next) => {
       );
     }
 
- const bookings = await Booking.find({ vendor: req.params.id })
-  .populate("user", "name email")
-  .populate("service", "title")
-  .populate("items.variant", "name unit price"); // NEW
+    const bookings = await Booking.find({ vendor: req.params.id })
+      .populate("user", "name email")
+      .populate("service", "title")
+      .populate("items.variant", "name unit price"); // NEW
 
     res.status(200).json({
       success: true,

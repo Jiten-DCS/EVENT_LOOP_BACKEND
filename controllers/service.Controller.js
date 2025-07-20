@@ -345,7 +345,6 @@ exports.updateService = async (req, res, next) => {
     // ➕  NEW
     if (req.body.variants) await syncVariants(service._id, req.body.variants);
 
-    res.status(200).json({ success: true, data: service });
 
     res.status(200).json({
       success: true,
@@ -584,12 +583,12 @@ exports.getAllServices = async (req, res, next) => {
 // @access  Public
 exports.getService = async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const { id } = req.params;          // ← changed from req.params
     if (!id) {
       return next(new ErrorResponse("Please provide a service id", 400));
     }
 
-    // Step 1: Get the service with vendor & category
+    // Step 1: Get service + vendor + category + variants
     const service = await Service.findById(id)
       .populate("vendor", "name profilePhoto")
       .populate("category", "title")
@@ -599,7 +598,13 @@ exports.getService = async (req, res, next) => {
       return next(new ErrorResponse("Service not found", 404));
     }
 
-    // Step 2: Find active offer for this service
+    // Step 2: Attach variants
+    const variants = await ServiceVariant.find({ service: id, isActive: true })
+      .select("-service -createdAt -updatedAt -__v")
+      .lean();
+    service.variants = variants;
+
+    // Step 3: Attach active offer
     const offer = await Offer.findOne({
       service: id,
       isActive: true,
@@ -607,7 +612,6 @@ exports.getService = async (req, res, next) => {
       validTill: { $gte: new Date() },
     }).select("discountedPrice discountPercentage bannerImage validTill");
 
-    // Step 3: Attach offer if found
     service.offer = offer || null;
 
     // Step 4: Send response
