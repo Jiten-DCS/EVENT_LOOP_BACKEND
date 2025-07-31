@@ -166,13 +166,19 @@ exports.createService = async (req, res, next) => {
         // Process variants if they exist
         if (variants.length > 0) {
             const isValidVariants = variants.every(
-                (v) => v && v.name && v.unit && v.price !== undefined && !isNaN(Number(v.price))
+                (v) =>
+                    v &&
+                    v.name &&
+                    (v.isCheckbox || (v.unit && v.price !== undefined && !isNaN(Number(v.price))))
             );
 
             if (!isValidVariants) {
                 await Service.deleteOne({ _id: service._id });
                 return next(
-                    new ErrorResponse("Each variant must have name, unit, and valid price", 400)
+                    new ErrorResponse(
+                        "Each variant must have name and either unit+price (for quantity-based) or isCheckbox flag (for checkbox-type)",
+                        400
+                    )
                 );
             }
 
@@ -180,11 +186,17 @@ exports.createService = async (req, res, next) => {
                 variants.map((variant) => ({
                     service: service._id,
                     name: variant.name,
-                    unit: variant.unit,
+                    unit: variant.isCheckbox ? "item" : variant.unit, // Default unit for checkboxes
                     price: Number(variant.price),
-                    minQty: variant.minQty ? Number(variant.minQty) : 1,
-                    maxQty: variant.maxQty ? Number(variant.maxQty) : undefined,
+                    minQty: variant.isCheckbox ? 1 : variant.minQty ? Number(variant.minQty) : 1,
+                    maxQty: variant.isCheckbox
+                        ? 1
+                        : variant.maxQty
+                        ? Number(variant.maxQty)
+                        : undefined,
                     isActive: true,
+                    isCheckbox: variant.isCheckbox || false,
+                    defaultChecked: variant.defaultChecked || false,
                 }))
             );
 
@@ -221,7 +233,6 @@ exports.getVendorServices = async (req, res, next) => {
         const services = await Service.find({ vendor: req.params.vendorId })
             .populate("category", "title")
             .lean();
-        
 
         const serviceIds = services.map((service) => service._id);
 
@@ -263,7 +274,7 @@ exports.getVendorServices = async (req, res, next) => {
 // @access  Private (Vendor only)
 exports.updateService = async (req, res, next) => {
     try {
-        let service = await Service.findById(req.params.id);
+        let service = await Service.findById(req.params.id).populate("variants");
 
         if (!service) {
             return next(new ErrorResponse("Service not found", 404));
@@ -309,13 +320,9 @@ exports.updateService = async (req, res, next) => {
             const newImages = req.files.map((file) => file.path);
             images = [...images, ...newImages];
 
-            if (images.length > 6) {
-                return next(
-                    new ErrorResponse(
-                        "Cannot have more than 6 images. New images were uploaded but not saved due to limit.",
-                        400
-                    )
-                );
+            if (images.length > 10) {
+                // Changed to match your createService limit
+                return next(new ErrorResponse("Cannot have more than 10 images", 400));
             }
         }
 
@@ -332,19 +339,13 @@ exports.updateService = async (req, res, next) => {
                     return next(new ErrorResponse("Invalid details format", 400));
                 }
             }
-
-            if (typeof service.details === "object") {
-                req.body.details = {
-                    ...service.details,
-                    ...req.body.details,
-                };
-            }
+            // Merge with existing details
+            req.body.details = { ...service.details, ...req.body.details };
         }
 
-        // ✅ Parse and merge FAQs if provided
+        // Parse FAQs if provided
         if (req.body.faqs) {
             let parsedFaqs = [];
-
             if (typeof req.body.faqs === "string") {
                 try {
                     parsedFaqs = JSON.parse(req.body.faqs);
@@ -365,27 +366,71 @@ exports.updateService = async (req, res, next) => {
 
             if (!isValidFaqs) {
                 return next(
-                    new ErrorResponse("Each FAQ must have a valid 'question' and 'answer'", 400)
+                    new ErrorResponse("Each FAQ must have valid 'question' and 'answer'", 400)
+                );
+            }
+            req.body.faqs = parsedFaqs;
+        }
+
+        // Handle variants
+        if (req.body.variants) {
+            let variants = [];
+            try {
+                variants =
+                    typeof req.body.variants === "string"
+                        ? JSON.parse(req.body.variants)
+                        : req.body.variants;
+
+                if (!Array.isArray(variants)) {
+                    variants = [variants];
+                }
+            } catch (err) {
+                return next(new ErrorResponse("Invalid variants format", 400));
+            }
+
+            const isValidVariants = variants.every(
+                (v) => v && v.name && v.unit && v.price !== undefined && !isNaN(Number(v.price))
+            );
+
+            if (!isValidVariants) {
+                return next(
+                    new ErrorResponse("Each variant must have name, unit, and valid price", 400)
                 );
             }
 
-            req.body.faqs = parsedFaqs; // Replace entire FAQ set (or merge logic could be added)
+            // Delete old variants and create new ones
+            await ServiceVariant.deleteMany({ service: service._id });
+            const createdVariants = await ServiceVariant.insertMany(
+                variants.map((variant) => ({
+                    service: service._id,
+                    name: variant.name,
+                    unit: variant.unit,
+                    price: Number(variant.price),
+                    minQty: variant.minQty ? Number(variant.minQty) : 1,
+                    maxQty: variant.maxQty ? Number(variant.maxQty) : undefined,
+                    isActive: true,
+                }))
+            );
+
+            req.body.variants = createdVariants.map((v) => v._id);
         }
 
         // Prevent vendor field from being modified
         delete req.body.vendor;
 
-        // Final update
+        // Update service
         service.set({ ...req.body, images });
-
         await service.save();
 
-        // ➕  NEW
-        if (req.body.variants) await syncVariants(service._id, req.body.variants);
+        // Get fully populated service for response
+        const populatedService = await Service.findById(service._id)
+            .populate("variants")
+            .populate("vendor", "name profilePhoto")
+            .populate("category", "title");
 
         res.status(200).json({
             success: true,
-            data: service,
+            data: populatedService,
         });
     } catch (err) {
         next(err);
