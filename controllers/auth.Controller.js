@@ -372,65 +372,58 @@ exports.verifyOTP = async (req, res, next) => {
 // @route   POST /api/auth/login
 // @access  Public
 exports.login = async (req, res, next) => {
-  const { email, password } = req.body;
+    const { email } = req.body;
 
-  try {
-    // Check if email and password exist
-    if (!email || !password) {
-      return next(new ErrorResponse("Please provide email and password", 400));
+    try {
+        // Check if email exists in request
+        if (!email) {
+            return next(new ErrorResponse("Please provide an email", 400));
+        }
+
+        // Find user by email
+        const user = await User.findOne({ email });
+        if (!user) {
+            return next(new ErrorResponse("No account found with this email", 404));
+        }
+
+        // Check if user is blocked
+        if (user.isBlocked) {
+            const blockInfo = user.blockDetails || {};
+            return next(
+                new ErrorResponse(
+                    `Your account has been blocked by admin. Reason: ${
+                        blockInfo.reason || "Not specified"
+                    }. ` +
+                        `Blocked on: ${
+                            blockInfo.blockedAt
+                                ? blockInfo.blockedAt.toLocaleString()
+                                : "Date not available"
+                        }. ` +
+                        "Please check your registered email for more details.",
+                    403
+                )
+            );
+        }
+
+        // Check if vendor is approved
+        if (user.role === "vendor" && !user.isApproved) {
+            return res.status(200).json({
+                success: false,
+                message:
+                    "Your vendor account is pending admin approval. " +
+                    "You will be notified via email once approved.",
+                isVendorPendingApproval: true,
+            });
+        }
+
+        // Successful login
+        createSendToken(user, 200, res);
+    } catch (err) {
+        console.error("Error in login:", err);
+        next(new ErrorResponse("Login failed. Please try again later.", 500));
     }
-
-    // Check if user exists and password is correct
-    const user = await User.findOne({ email }).select("+password");
-
-    if (!user || !(await user.comparePassword(password, user.password))) {
-      return next(new ErrorResponse("Incorrect email or password", 401));
-    }
-
-    // Check if user is blocked
-    if (user.isBlocked) {
-      const blockInfo = user.blockDetails;
-      return next(
-        new ErrorResponse(
-          `Your account has been blocked by admin. Reason: ${
-            blockInfo.reason || "Not specified"
-          }. ` +
-            `Blocked on: ${blockInfo.blockedAt.toLocaleString()}. ` +
-            "Please check your registered email for more details.",
-          403
-        )
-      );
-    }
-
-    // Check if phone number is verified (optional)
-    // if (!user.phoneNumberVerified) {
-    //   return res.status(200).json({
-    //     success: false,
-    //     message: 'Phone number not verified. Please verify to continue.',
-    //     requiresPhoneVerification: true,
-    //     userId: user._id,
-    //     phoneNumber: user.phoneNumber,
-    //   });
-    // }
-
-    // Check if vendor is approved
-    if (user.role === "vendor" && !user.isApproved) {
-      return res.status(200).json({
-        success: false,
-        message:
-          "Your vendor account is pending admin approval. " +
-          "You will be notified via email once approved.",
-        isVendorPendingApproval: true,
-      });
-    }
-
-    // Successful login
-    createSendToken(user, 200, res);
-  } catch (err) {
-    console.error("Error in login:", err);
-    next(new ErrorResponse("Login failed. Please try again later.", 500));
-  }
 };
+
 // @desc    Logout user
 // @route   GET /api/auth/logout
 // @access  Private

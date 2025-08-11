@@ -20,4 +20,4 @@ const serviceVariantSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
-module.exports = mongoose.model('ServiceVariant', serviceVariantSchema);
+module.exports = mongoose.model("ServiceVariant", serviceVariantSchema);
