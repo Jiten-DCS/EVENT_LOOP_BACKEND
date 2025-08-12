@@ -127,9 +127,9 @@ bookingSchema.pre('save',  function (next) { calcTotals(this); next(); });
 bookingSchema.pre('updateOne', function (next) { calcTotals(this.getUpdate().$set || this); next(); });
 
 // -------------------- TTL for unpaid bookings --------------------------
-bookingSchema.index(
-  { createdAt: 1 },
-  { expireAfterSeconds: 30 * 60 } // 30 min
-);
+// bookingSchema.index(
+//   { createdAt: 1 },
+//   { expireAfterSeconds: 30 * 60 } // 30 min
+// );
 
 module.exports = mongoose.model('Booking', bookingSchema);
