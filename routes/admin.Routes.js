@@ -11,12 +11,14 @@ const {
   getOffer,
   blockUser,
   unblockUser,
+  getAllBookings,
 } = require("../controllers/admin.Controller");
 const { protect, authorize } = require("../middleware/authMiddleware");
 const { uploadSingleImage } = require("../middleware/uploadMiddleware");
 
 router.get("/vendors", protect, authorize("admin"), getVendors);
 router.put("/vendors/:id/approve", protect, authorize("admin"), approveVendor);
+router.get("/bookings", protect, authorize("admin"), getAllBookings);
 
 // Category routes with image upload
 router.post(
