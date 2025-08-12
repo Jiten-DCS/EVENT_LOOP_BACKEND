@@ -49,7 +49,6 @@ app.set('trust proxy', 1);
 
 // Compression middleware
 app.use(compression());
-
 // Rate limiting with different limits for different endpoints
 const createRateLimit = (windowMs, max, message) => rateLimit({
   windowMs,
