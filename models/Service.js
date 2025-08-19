@@ -21,18 +21,18 @@ const serviceSchema = new mongoose.Schema(
         },
         minPrice: {
             type: Number,
-            required: [true, "Please provide minimum price"],
+            // required: [true, "Please provide minimum price"],
             min: [0, "Price cannot be negative"],
         },
         maxPrice: {
             type: Number,
-            required: [true, "Please provide maximum price"],
-            validate: {
-                validator: function (value) {
-                    return value >= this.minPrice;
-                },
-                message: "Max price must be greater than or equal to min price",
-            },
+            // required: [true, "Please provide maximum price"],
+            // validate: {
+            //     validator: function (value) {
+            //         return value >= this.minPrice;
+            //     },
+            //     message: "Max price must be greater than or equal to min price",
+            // },
         },
         category: {
             type: mongoose.Schema.ObjectId,
