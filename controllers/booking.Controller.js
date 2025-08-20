@@ -97,6 +97,18 @@ exports.createBooking = async (req, res, next) => {
         const tax = Math.round(calculatedTotal * 0.18);
         const grandTotal = calculatedTotal + tax;
 
+        // validate availability
+        const existingBookings = await Booking.countDocuments({
+            service,
+            date: bookingDate,
+            status: { $ne: "cancelled" },
+        });
+
+        const maxBookings = serviceDoc.availability?.maxBookingsPerDay || 1;
+
+        if (existingBookings >= maxBookings) {
+            return next(new ErrorResponse("No slots available for this date", 400));
+        }
         // Create booking
         const booking = await Booking.create({
             user: req.user.id,

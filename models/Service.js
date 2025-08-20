@@ -83,6 +83,17 @@ const serviceSchema = new mongoose.Schema(
                 ref: "ServiceVariant",
             },
         ],
+        availability: {
+  maxBookingsPerDay: { type: Number, default: 1 },
+  bookedDates: [
+    {
+      date: { type: Date },
+      count: { type: Number, default: 0 }
+    }
+  ]
+},
+
+
         createdAt: {
             type: Date,
             default: Date.now,

@@ -661,12 +661,33 @@ exports.getAllServices = async (req, res, next) => {
     }
 };
 
+
+function computeAvailableDates(availability) {
+    const dates = [];
+    const today = new Date();
+
+    for (let i = 0; i < 30; i++) {
+        const date = new Date(today);
+        date.setDate(today.getDate() + i);
+
+        const booked = availability.bookedDates.find(
+            (d) => d.date.toDateString() === date.toDateString()
+        );
+        if (!booked || booked.count < availability.maxBookingsPerDay) {
+            dates.push(date);
+        }
+    }
+
+    return dates;
+}
+
+
 // @desc    Get a single service by id (from query params)
 // @route   GET /api/services/getServices?id=serviceId
 // @access  Public
 exports.getService = async (req, res, next) => {
     try {
-        const { id } = req.params; // ← changed from req.params
+        const { id } = req.query; // ✅ fixed from req.params
         if (!id) {
             return next(new ErrorResponse("Please provide a service id", 400));
         }
@@ -675,17 +696,17 @@ exports.getService = async (req, res, next) => {
         const service = await Service.findById(id)
             .populate("vendor", "name profilePhoto")
             .populate("category", "title")
+            .populate("variants") // you want variants anyway
             .lean();
 
         if (!service) {
             return next(new ErrorResponse("Service not found", 404));
         }
 
-        // Step 2: Attach variants
-        const variants = await ServiceVariant.find({ service: id, isActive: true })
-            .select("-service -createdAt -updatedAt -__v")
-            .lean();
-        service.variants = variants;
+        // Step 2: Attach service-level availability
+        if (service.availability) {
+            service.availableDates = computeAvailableDates(service.availability);
+        }
 
         // Step 3: Attach active offer
         const offer = await Offer.findOne({
@@ -706,3 +727,40 @@ exports.getService = async (req, res, next) => {
         next(err);
     }
 };
+
+
+exports.checkAvailability = async (req, res, next) => {
+    try {
+        const { serviceId, date } = req.query;
+
+        if (!serviceId || !date) {
+            return next(new ErrorResponse("Service ID and date are required", 400));
+        }
+
+        const service = await Service.findById(serviceId).populate("variants");
+        if (!service) {
+            return next(new ErrorResponse("Service not found", 404));
+        }
+
+        const selectedDate = new Date(date);
+
+        // Count existing bookings for this service on that date
+        const bookingsCount = await Booking.countDocuments({
+            service: serviceId,
+            date: selectedDate,
+            status: { $ne: "cancelled" },
+        });
+
+        // Compare with allowed slots
+        const maxBookings = service.availability?.maxBookingsPerDay || 1;
+
+        res.status(200).json({
+            success: true,
+            available: bookingsCount < maxBookings,
+            remaining: Math.max(maxBookings - bookingsCount, 0),
+        });
+    } catch (err) {
+        next(err);
+    }
+};
+
