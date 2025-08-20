@@ -11,6 +11,41 @@ const Payment = require("../models/Payment");
 // @desc    Create booking
 // @route   POST /api/bookings
 // @access  Private
+exports.checkAvailability = async (req, res, next) => {
+    try {
+        const { serviceId, date } = req.query;
+
+        if (!serviceId || !date) {
+            return next(new ErrorResponse("Service ID and date are required", 400));
+        }
+
+        const service = await Service.findById(serviceId).populate("variants");
+        if (!service) {
+            return next(new ErrorResponse("Service not found", 404));
+        }
+
+        const selectedDate = new Date(date);
+
+        // Count existing bookings for this service on that date
+        const bookingsCount = await Booking.countDocuments({
+            service: serviceId,
+            date: selectedDate,
+            status: { $ne: "cancelled" },
+        });
+
+        // Compare with allowed slots
+        const maxBookings = service.availability?.maxBookingsPerDay || 1;
+
+        res.status(200).json({
+            success: true,
+            available: bookingsCount < maxBookings,
+            remaining: Math.max(maxBookings - bookingsCount, 0),
+        });
+    } catch (err) {
+        next(err);
+    }
+};
+
 exports.createBooking = async (req, res, next) => {
     try {
         console.log("Headers:", req.headers);
@@ -78,7 +113,7 @@ exports.createBooking = async (req, res, next) => {
             }
 
             bookingItems.push({
-                variantId: variant._id,
+                variant: variant._id,
                 name: variant.name,
                 unit: variant.unit,
                 quantity: item.quantity,
