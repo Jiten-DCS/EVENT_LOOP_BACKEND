@@ -52,7 +52,13 @@ exports.createService = async (req, res, next) => {
             details,
             faqs,
             variants: rawVariants,
+            isSlotBased,
+            slotDuration,
+            slotCapacity,
+            slotStartTime,
+            slotEndTime,
         } = req.body;
+
 
         let tags = req.body.tags;
 
@@ -161,7 +167,17 @@ exports.createService = async (req, res, next) => {
             details: parsedDetails,
             faqs: parsedFaqs,
             variants: [],
+            availability: {
+                isSlotBased: isSlotBased || false,
+                slotDuration: isSlotBased ? Number(slotDuration) : undefined,
+                slotCapacity: isSlotBased ? Number(slotCapacity) : undefined,
+                slotStartTime: isSlotBased ? slotStartTime : undefined,
+                slotEndTime: isSlotBased ? slotEndTime : undefined,
+                maxBookingsPerDay: isSlotBased ? undefined : 1, // fallback for daily
+                bookedDates: [],
+            },
         });
+
 
         // Process variants if they exist
         if (variants.length > 0) {

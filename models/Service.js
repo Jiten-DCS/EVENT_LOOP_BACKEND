@@ -84,16 +84,27 @@ const serviceSchema = new mongoose.Schema(
             },
         ],
         availability: {
-  maxBookingsPerDay: { type: Number, default: 1 },
-  bookedDates: [
-    {
-      date: { type: Date },
-      count: { type: Number, default: 0 }
-    }
-  ]
-},
+            isSlotBased: { type: Boolean, default: false },
+            slotDuration: { type: Number }, // in minutes
+            slotCapacity: { type: Number }, // per slot
+            slotStartTime: { type: String }, // e.g. "09:00"
+            slotEndTime: { type: String }, // e.g. "18:00"
 
-
+            // keep your per-day fallback
+            maxBookingsPerDay: { type: Number, default: 1 },
+            bookedDates: [
+                {
+                    date: { type: Date },
+                    count: { type: Number, default: 0 },
+                    slots: [
+                        {
+                            time: { type: String }, // "10:00-16:00"
+                            count: { type: Number, default: 0 },
+                        },
+                    ],
+                },
+            ],
+        },
         createdAt: {
             type: Date,
             default: Date.now,
@@ -108,10 +119,10 @@ const serviceSchema = new mongoose.Schema(
 // Indexes
 serviceSchema.index({ category: 1 });
 serviceSchema.index({
-  location: "text",
-  title: "text",
-  description: "text",
-  subCategory: "text",
+    location: "text",
+    title: "text",
+    description: "text",
+    subCategory: "text",
 });
 
 module.exports = mongoose.model("Service", serviceSchema);
