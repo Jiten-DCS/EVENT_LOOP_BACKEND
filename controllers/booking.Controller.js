@@ -13,7 +13,6 @@ const Payment = require("../models/Payment");
 // @access  Private
 exports.createBooking = async (req, res, next) => {
     try {
-        // Debugging: Log headers and body
         console.log("Headers:", req.headers);
         console.log("Raw body:", req.body);
 
@@ -21,7 +20,6 @@ exports.createBooking = async (req, res, next) => {
             return next(new ErrorResponse("No data received in request body", 400));
         }
 
-        // Destructure with defaults
         const {
             service = "",
             name = "",
@@ -41,11 +39,9 @@ exports.createBooking = async (req, res, next) => {
             }
         }
 
-        // Validate service exists
+        // Validate service
         const serviceDoc = await Service.findById(service).populate("vendor");
-        if (!serviceDoc) {
-            return next(new ErrorResponse("Service not found", 404));
-        }
+        if (!serviceDoc) return next(new ErrorResponse("Service not found", 404));
 
         // Validate variants
         if (!Array.isArray(variants) || variants.length === 0) {
@@ -58,15 +54,16 @@ exports.createBooking = async (req, res, next) => {
             return next(new ErrorResponse("Vendor not available", 404));
         }
 
-        // Validate date is in future
+        // Validate future date
         const bookingDate = new Date(date);
         if (bookingDate <= new Date()) {
             return next(new ErrorResponse("Booking date must be in the future", 400));
         }
 
-        // Process variants and calculate total
+        // Process variants
         const bookingItems = [];
         let calculatedTotal = 0;
+        let slotBasedVariants = [];
 
         for (const item of variants) {
             const variant = await ServiceVariant.findById(item.variant);
@@ -74,48 +71,77 @@ exports.createBooking = async (req, res, next) => {
                 return next(new ErrorResponse(`Variant ${item.variant} not found`, 404));
             }
 
+            if (variant.isSlotBased) slotBasedVariants.push(variant);
+
             if (!item.quantity || item.quantity <= 0) {
                 return next(new ErrorResponse("Quantity must be greater than zero", 400));
             }
 
             bookingItems.push({
+                variantId: variant._id,
                 name: variant.name,
                 unit: variant.unit,
                 quantity: item.quantity,
                 unitPrice: variant.price,
+                isSlotBased: variant.isSlotBased,
+                slotType: variant.slotType,
+                slotName: variant.slotName,
             });
 
             calculatedTotal += variant.price * item.quantity;
         }
 
-        // Validate calculated total matches provided total
+        // Validate slot booking rules
+        if (slotBasedVariants.length > 1) {
+            return next(
+                new ErrorResponse("Only one slot-based variant can be booked per booking", 400)
+            );
+        }
+
+        if (slotBasedVariants.length === 1) {
+            const variant = slotBasedVariants[0];
+            const existingSlotBookings = await Booking.countDocuments({
+                service,
+                date: bookingDate,
+                "items.variantId": variant._id,
+                status: { $ne: "cancelled" },
+            });
+
+            if (existingSlotBookings >= (variant.maxQty || 1)) {
+                return next(
+                    new ErrorResponse(`No slots available for ${variant.name} on this date`, 400)
+                );
+            }
+        } else {
+            // Non-slot based → check per-day limit
+            const existingBookings = await Booking.countDocuments({
+                service,
+                date: bookingDate,
+                status: { $ne: "cancelled" },
+            });
+
+            const maxBookings = serviceDoc.availability?.maxBookingsPerDay || 1;
+            if (existingBookings >= maxBookings) {
+                return next(new ErrorResponse("No bookings available for this date", 400));
+            }
+        }
+
+        // Validate total price
         if (calculatedTotal !== totalPrice) {
             return next(new ErrorResponse("Price calculation mismatch", 400));
         }
 
-        // Calculate taxes and grand total (example: 18% GST)
+        // Tax & totals
         const tax = Math.round(calculatedTotal * 0.18);
         const grandTotal = calculatedTotal + tax;
 
-        // validate availability
-        const existingBookings = await Booking.countDocuments({
-            service,
-            date: bookingDate,
-            status: { $ne: "cancelled" },
-        });
-
-        const maxBookings = serviceDoc.availability?.maxBookingsPerDay || 1;
-
-        if (existingBookings >= maxBookings) {
-            return next(new ErrorResponse("No slots available for this date", 400));
-        }
         // Create booking
         const booking = await Booking.create({
             user: req.user.id,
             userName: name,
             userEmail: email,
             vendor: vendor._id,
-            service: service,
+            service,
             message,
             date,
             items: bookingItems,
@@ -127,7 +153,7 @@ exports.createBooking = async (req, res, next) => {
             paymentStatus: "pending",
         });
 
-        // Send notification email to vendor
+        // Notify vendor
         await sendEmail({
             email: vendor.email,
             subject: "New Booking Request - Payment Pending",
@@ -135,31 +161,29 @@ exports.createBooking = async (req, res, next) => {
                 vendorName: vendor.name,
                 customerName: name,
                 serviceTitle: serviceDoc.title,
-                date: date,
+                date,
                 companyLogoUrl: "https://yourdomain.com/logo.png",
             }),
         });
 
-        // Mock payment response (replace with actual payment integration)
+        // Mock payment
         const paymentResponse = {
             orderId: `mock_${booking._id}`,
-            amount: grandTotal * 100, // in paise
+            amount: grandTotal * 100, // paise
             currency: "INR",
             key: process.env.RAZORPAY_KEY_ID,
         };
 
         res.status(201).json({
             success: true,
-            data: {
-                booking,
-                payment: paymentResponse,
-            },
+            data: { booking, payment: paymentResponse },
         });
     } catch (err) {
         console.error("Booking creation error:", err);
         next(err);
     }
 };
+
 
 // @desc    Get vendor's bookings
 // @route   GET /api/bookings/vendor/:id
