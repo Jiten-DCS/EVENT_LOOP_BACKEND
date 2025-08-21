@@ -694,7 +694,10 @@ function computeAvailableDates(availability) {
 // @access  Public
 exports.getService = async (req, res, next) => {
     try {
-        const { id } = req.query; // ✅ fixed from req.params
+        // Extract id from req.params, req.query, or req.body
+        const id = req.params.id || req.query.id || req.body.id;
+
+        // Check if id is provided
         if (!id) {
             return next(new ErrorResponse("Please provide a service id", 400));
         }
