@@ -695,7 +695,7 @@ function computeAvailableDates(availability) {
 exports.getService = async (req, res, next) => {
     try {
         // Extract id from req.params, req.query, or req.body
-        const id = req.params.id || req.query.id || req.body.id;
+        const id =  req.query.id || req.body.id;
 
         // Check if id is provided
         if (!id) {
