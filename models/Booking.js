@@ -10,21 +10,17 @@ function toUTCDateOnly(input) {
 
 const lineItemSchema = new mongoose.Schema(
     {
-        // 🔗 keep a hard link to the selected variant
         variant: { type: mongoose.Schema.ObjectId, ref: "ServiceVariant", required: true },
-
-        name: { type: String, required: true }, // e.g. "Veg Plate"
-        unit: { type: String, required: true }, // "plate", "litre", "piece" …
+        name: { type: String, required: true },
+        unit: { type: String, required: true },
         quantity: { type: Number, required: true, min: 1 },
         unitPrice: { type: Number, required: true, min: 0 },
 
-        // Slot snapshot — only relevant when isSlotBased=true
+        // For slot-based bookings
         isSlotBased: { type: Boolean, default: false },
-        slotType: { type: String, enum: ["full-day", "half-day"], default: null },
-        slotName: {
-            type: String,
-            enum: ["morning", "afternoon", "evening", "night"],
-            default: null,
+        slot: {
+            startTime: { type: String }, // "16:00"
+            endTime: { type: String }, // "22:00"
         },
     },
     { _id: false }

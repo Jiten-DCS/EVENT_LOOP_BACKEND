@@ -21,18 +21,10 @@ const serviceSchema = new mongoose.Schema(
         },
         minPrice: {
             type: Number,
-            // required: [true, "Please provide minimum price"],
             min: [0, "Price cannot be negative"],
         },
         maxPrice: {
             type: Number,
-            // required: [true, "Please provide maximum price"],
-            // validate: {
-            //     validator: function (value) {
-            //         return value >= this.minPrice;
-            //     },
-            //     message: "Max price must be greater than or equal to min price",
-            // },
         },
         category: {
             type: mongoose.Schema.ObjectId,
@@ -75,7 +67,7 @@ const serviceSchema = new mongoose.Schema(
             },
         ],
         details: {
-            type: mongoose.Schema.Types.Mixed, // this holds dynamic category-specific fields
+            type: mongoose.Schema.Types.Mixed, // dynamic category-specific fields
         },
         variants: [
             {
@@ -85,21 +77,23 @@ const serviceSchema = new mongoose.Schema(
         ],
         availability: {
             isSlotBased: { type: Boolean, default: false },
-            slotDuration: { type: Number }, // in minutes
-            slotCapacity: { type: Number }, // per slot
-            slotStartTime: { type: String }, // e.g. "09:00"
-            slotEndTime: { type: String }, // e.g. "18:00"
 
-            // keep your per-day fallback
-            maxBookingsPerDay: { type: Number, default: 1 },
+            // vendor-defined slots
+            slots: [
+                {
+                    startTime: { type: String, required: true }, // "09:00"
+                    endTime: { type: String, required: true }, // "13:00"
+                },
+            ],
+
+            // bookings by date
             bookedDates: [
                 {
                     date: { type: Date },
-                    count: { type: Number, default: 0 },
                     slots: [
                         {
-                            time: { type: String }, // "10:00-16:00"
-                            count: { type: Number, default: 0 },
+                            time: { type: String }, // "09:00-13:00"
+                            booked: { type: Boolean, default: false }, // mark if booked
                         },
                     ],
                 },
@@ -111,12 +105,10 @@ const serviceSchema = new mongoose.Schema(
         },
     },
     {
-        // Add this to prevent Mongoose from stripping non-schema fields
         strictPopulate: false,
     }
 );
 
-// Indexes
 serviceSchema.index({ category: 1 });
 serviceSchema.index({
     location: "text",

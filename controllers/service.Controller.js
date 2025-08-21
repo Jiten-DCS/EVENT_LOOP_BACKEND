@@ -33,7 +33,6 @@ const syncVariants = async (serviceId, rawVariants = []) => {
 // @access  Private (Vendor only)
 exports.createService = async (req, res, next) => {
     try {
-        // Check if vendor is approved
         if (!req.user.isApproved) {
             return next(new ErrorResponse("Vendor not approved by admin yet", 403));
         }
@@ -53,16 +52,11 @@ exports.createService = async (req, res, next) => {
             faqs,
             variants: rawVariants,
             isSlotBased,
-            slotDuration,
-            slotCapacity,
-            slotStartTime,
-            slotEndTime,
+            slots, // vendor-provided slots [{startTime:"09:00",endTime:"13:00"},...]
         } = req.body;
-
 
         let tags = req.body.tags;
 
-        // Validate images
         if (!req.files || req.files.length === 0) {
             return next(new ErrorResponse("Please upload at least one image", 400));
         }
@@ -90,7 +84,7 @@ exports.createService = async (req, res, next) => {
             }
         }
 
-        // Handle details - FIXED THIS PART
+        // Parse details
         let parsedDetails = {};
         if (details) {
             if (typeof details === "string") {
@@ -104,7 +98,7 @@ exports.createService = async (req, res, next) => {
             }
         }
 
-        // Handle faqs
+        // Parse FAQs
         let parsedFaqs = [];
         if (faqs) {
             if (typeof faqs === "string") {
@@ -118,7 +112,6 @@ exports.createService = async (req, res, next) => {
             }
         }
 
-        // Validate FAQs
         const isValidFaqs = parsedFaqs.every(
             (faq) =>
                 faq.question &&
@@ -127,12 +120,9 @@ exports.createService = async (req, res, next) => {
                 typeof faq.answer === "string"
         );
         if (!isValidFaqs && parsedFaqs.length > 0) {
-            return next(
-                new ErrorResponse("Each FAQ must have a valid 'question' and 'answer'", 400)
-            );
+            return next(new ErrorResponse("Each FAQ must have valid question and answer", 400));
         }
 
-        // Process images
         const images = req.files.map((file) => file.path);
 
         // Handle variants
@@ -140,16 +130,32 @@ exports.createService = async (req, res, next) => {
         if (rawVariants) {
             try {
                 variants = typeof rawVariants === "string" ? JSON.parse(rawVariants) : rawVariants;
-
-                if (!Array.isArray(variants)) {
-                    variants = [variants];
-                }
-            } catch (err) {
+                if (!Array.isArray(variants)) variants = [variants];
+            } catch {
                 return next(new ErrorResponse("Invalid variants format", 400));
             }
         }
 
-        // Create service with empty variants array
+        // Parse slots if slot-based
+        let parsedSlots = [];
+        if (isSlotBased && slots) {
+            parsedSlots = typeof slots === "string" ? JSON.parse(slots) : slots;
+            if (!Array.isArray(parsedSlots)) {
+                return next(new ErrorResponse("Slots must be an array", 400));
+            }
+            const isValidSlots = parsedSlots.every(
+                (s) =>
+                    s.startTime &&
+                    s.endTime &&
+                    typeof s.startTime === "string" &&
+                    typeof s.endTime === "string"
+            );
+            if (!isValidSlots) {
+                return next(new ErrorResponse("Each slot must have startTime and endTime", 400));
+            }
+        }
+
+
         const service = await Service.create({
             vendor: req.user.id,
             title,
@@ -169,40 +175,26 @@ exports.createService = async (req, res, next) => {
             variants: [],
             availability: {
                 isSlotBased: isSlotBased || false,
-                slotDuration: isSlotBased ? Number(slotDuration) : undefined,
-                slotCapacity: isSlotBased ? Number(slotCapacity) : undefined,
-                slotStartTime: isSlotBased ? slotStartTime : undefined,
-                slotEndTime: isSlotBased ? slotEndTime : undefined,
-                maxBookingsPerDay: isSlotBased ? undefined : 1, // fallback for daily
+                slots: parsedSlots,
                 bookedDates: [],
             },
         });
 
-
-        // Process variants if they exist
+        // Insert variants
         if (variants.length > 0) {
             const isValidVariants = variants.every(
-                (v) =>
-                    v &&
-                    v.name &&
-                    (v.isCheckbox || (v.unit && v.price !== undefined && !isNaN(Number(v.price))))
+                (v) => v && v.name && (v.isCheckbox || (v.unit && v.price !== undefined))
             );
-
             if (!isValidVariants) {
                 await Service.deleteOne({ _id: service._id });
-                return next(
-                    new ErrorResponse(
-                        "Each variant must have name and either unit+price (for quantity-based) or isCheckbox flag (for checkbox-type)",
-                        400
-                    )
-                );
+                return next(new ErrorResponse("Invalid variant data", 400));
             }
 
             const createdVariants = await ServiceVariant.insertMany(
                 variants.map((variant) => ({
                     service: service._id,
                     name: variant.name,
-                    unit: variant.isCheckbox ? "item" : variant.unit, // Default unit for checkboxes
+                    unit: variant.isCheckbox ? "item" : variant.unit,
                     price: Number(variant.price),
                     minQty: variant.isCheckbox ? 1 : variant.minQty ? Number(variant.minQty) : 1,
                     maxQty: variant.isCheckbox
@@ -220,12 +212,11 @@ exports.createService = async (req, res, next) => {
             await service.save();
         }
 
-        // Update user's services list
+        // Add service to user profile
         await User.findByIdAndUpdate(req.user.id, {
             $push: { services: service._id },
         });
 
-        // Get populated service for response
         const populatedService = await Service.findById(service._id)
             .populate("variants")
             .populate("vendor", "name profilePhoto")
