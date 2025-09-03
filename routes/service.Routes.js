@@ -1,15 +1,16 @@
 const express = require('express');
 const router = express.Router();
 const {
-  createService,
-  getVendorServices,
-  updateService,
-  deleteService,
-  getServicesByCategory,
-  searchServices,
-  getAllServices,
-  getService
-} = require('../controllers/service.Controller');
+    createService,
+    getVendorServices,
+    updateService,
+    deleteService,
+    getServicesByCategory,
+    searchServices,
+    getAllServices,
+    getService,
+    checkAvailability,
+} = require("../controllers/service.Controller");
 const { protect, authorize } = require('../middleware/authMiddleware');
 const { uploadMultipleImages } = require('../middleware/uploadMiddleware');
 
@@ -33,5 +34,7 @@ router.get('/category/:category', getServicesByCategory);
 router.get('/search', searchServices);
 router.get('/all', getAllServices);
 router.get('/:id', getService);
+router.get("/:serviceId/available-slots", checkAvailability);
+
 
 module.exports = router;

@@ -6,6 +6,7 @@ const Category = require("../models/Category");
 const mongoose = require("mongoose");
 const Offer = require("../models/Offer");
 const ServiceVariant = require("../models/ServiceVariant");
+const Booking = require("../models/Booking");
 
 // Replace all variants for a service with the new list
 const syncVariants = async (serviceId, rawVariants = []) => {
@@ -138,11 +139,25 @@ exports.createService = async (req, res, next) => {
 
         // Parse slots if slot-based
         let parsedSlots = [];
-        if (isSlotBased && slots) {
+        const isSlotBasedBool = String(isSlotBased) === "true"; // ✅ normalize
+
+        if (isSlotBasedBool) {
+            if (!slots) {
+                return next(new ErrorResponse("Slot-based services must provide slots", 400));
+            }
+
+            // Parse if JSON string
             parsedSlots = typeof slots === "string" ? JSON.parse(slots) : slots;
+
             if (!Array.isArray(parsedSlots)) {
                 return next(new ErrorResponse("Slots must be an array", 400));
             }
+
+            if (parsedSlots.length === 0) {
+                return next(new ErrorResponse("At least one slot is required", 400)); // ✅ extra guard
+            }
+
+            // Validate each slot
             const isValidSlots = parsedSlots.every(
                 (s) =>
                     s.startTime &&
@@ -154,7 +169,6 @@ exports.createService = async (req, res, next) => {
                 return next(new ErrorResponse("Each slot must have startTime and endTime", 400));
             }
         }
-
 
         const service = await Service.create({
             vendor: req.user.id,
@@ -172,11 +186,11 @@ exports.createService = async (req, res, next) => {
             socialLinks,
             details: parsedDetails,
             faqs: parsedFaqs,
-            variants: [],
+            variants: [], // handled later
             availability: {
-                isSlotBased: isSlotBased || false,
-                slots: parsedSlots,
-                bookedDates: [],
+                isSlotBased: isSlotBasedBool,
+                slots: parsedSlots, // vendor-defined slots
+                bookedDates: [], // empty initially
             },
         });
 
@@ -668,7 +682,6 @@ exports.getAllServices = async (req, res, next) => {
     }
 };
 
-
 function computeAvailableDates(availability) {
     const dates = [];
     const today = new Date();
@@ -677,17 +690,29 @@ function computeAvailableDates(availability) {
         const date = new Date(today);
         date.setDate(today.getDate() + i);
 
-        const booked = availability.bookedDates.find(
-            (d) => d.date.toDateString() === date.toDateString()
-        );
-        if (!booked || booked.count < availability.maxBookingsPerDay) {
-            dates.push(date);
+        // For slot-based services, check if any slots are available
+        if (availability.isSlotBased) {
+            const bookedDate = availability.bookedDates.find(
+                (d) => d.date.toDateString() === date.toDateString()
+            );
+
+            // If no bookings or some slots are still available
+            if (!bookedDate || bookedDate.slots.length < availability.slots.length) {
+                dates.push(date);
+            }
+        } else {
+            // Your existing logic for non-slot-based services
+            const booked = availability.bookedDates.find(
+                (d) => d.date.toDateString() === date.toDateString()
+            );
+            if (!booked || booked.count < availability.maxBookingsPerDay) {
+                dates.push(date);
+            }
         }
     }
 
     return dates;
 }
-
 
 // @desc    Get a single service by id (from query params)
 // @route   GET /api/services/getServices?id=serviceId
@@ -695,7 +720,7 @@ function computeAvailableDates(availability) {
 exports.getService = async (req, res, next) => {
     try {
         // Extract id from req.params, req.query, or req.body
-        const id =  req.query.id || req.body.id;
+        const id = req.query.id || req.body.id;
 
         // Check if id is provided
         if (!id) {
@@ -714,9 +739,9 @@ exports.getService = async (req, res, next) => {
         }
 
         // Step 2: Attach service-level availability
-        if (service.availability) {
-            service.availableDates = computeAvailableDates(service.availability);
-        }
+        // if (service.availability) {
+        //     service.availableDates = computeAvailableDates(service.availability);
+        // }
 
         // Step 3: Attach active offer
         const offer = await Offer.findOne({
@@ -738,3 +763,98 @@ exports.getService = async (req, res, next) => {
     }
 };
 
+// controllers/serviceController.js
+// exports.getAvailableSlots = async (req, res, next) => {
+//     try {
+//         const { id } = req.params;
+//         const { date } = req.query;
+//         console.log(date,id)
+
+//         if (!id || !date) {
+//             return next(new ErrorResponse("Service ID and date are required", 400));
+//         }
+
+//         const service = await Service.findById(id);
+//         if (!service) return res.status(404).json({ message: "Service not found" });
+//         console.log('service',service)
+//         if (!service.isSlotBased) {
+//             return res.status(200).json({ success: true, data: [] }); // not slot-based
+//         }
+
+//         const bookingDate = new Date(date);
+//         bookingDate.setUTCHours(0, 0, 0, 0);
+
+//         const bookings = await Booking.find({
+//             service: id,
+//             date: bookingDate,
+//             status: { $ne: "cancelled" },
+//         });
+
+//         const bookedSlots = bookings.map((b) => b.slot);
+
+//         const availableSlots = service.availability.slots.map((slot) => ({
+//             ...slot.toObject(),
+//             isBooked: bookedSlots.some(
+//                 (bs) => bs && bs.startTime === slot.startTime && bs.endTime === slot.endTime
+//             ),
+//         }));
+
+//         res.status(200).json({ success: true, data: availableSlots });
+//     } catch (error) {
+//         console.error(error);
+//         res.status(500).json({ message: "Server error" });
+//     }
+// };
+
+exports.checkAvailability = async (req, res, next) => {
+    try {
+        const { serviceId } = req.params; // <-- from params
+        const { date } = req.query;  
+        console.log(serviceId, date);
+        if (!serviceId || !date) {
+            return next(new ErrorResponse("Service ID and date are required", 400));
+        }
+
+        const service = await Service.findById(serviceId);
+        if (!service) return next(new ErrorResponse("Service not found", 404));
+
+        if (!service.availability?.isSlotBased) {
+            return next(new ErrorResponse("This service is not slot-based", 400));
+        }
+
+        // Normalize date → midnight UTC
+        const bookingDate = new Date(date);
+        bookingDate.setUTCHours(0, 0, 0, 0);
+
+        // Fetch all confirmed bookings for that service/date
+        const bookings = await Booking.find({
+            service: serviceId,
+            date: bookingDate,
+            status: { $ne: "cancelled" },
+        });
+
+        // Collect booked slotIds
+        const bookedSlotIds = bookings
+            .filter((b) => b.slot && b.slot.slotId)
+            .map((b) => b.slot.slotId.toString());
+
+        // Build availability response
+        const availableSlots = (service.availability.slots || []).map((s) => {
+            return {
+                _id: s._id,
+                startTime: s.startTime,
+                endTime: s.endTime,
+                isBooked: bookedSlotIds.includes(s._id.toString()),
+            };
+        });
+
+        res.status(200).json({
+            success: true,
+            serviceId,
+            date,
+            slots: availableSlots,
+        });
+    } catch (err) {
+        next(err);
+    }
+};

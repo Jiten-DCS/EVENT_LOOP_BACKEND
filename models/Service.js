@@ -78,22 +78,26 @@ const serviceSchema = new mongoose.Schema(
         availability: {
             isSlotBased: { type: Boolean, default: false },
 
-            // vendor-defined slots
+            // Vendor-defined slots (template)
             slots: [
                 {
+                    _id: { type: mongoose.Schema.Types.ObjectId, auto: true },
                     startTime: { type: String, required: true }, // "09:00"
                     endTime: { type: String, required: true }, // "13:00"
                 },
             ],
 
-            // bookings by date
+            // Bookings per date
             bookedDates: [
                 {
-                    date: { type: Date },
+                    date: { type: Date, required: true }, // Specific date
                     slots: [
                         {
-                            time: { type: String }, // "09:00-13:00"
-                            booked: { type: Boolean, default: false }, // mark if booked
+                            slotId: { type: mongoose.Schema.Types.ObjectId, required: true }, // reference to vendor-defined slot
+                            startTime: { type: String, required: true },
+                            endTime: { type: String, required: true },
+                            bookedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+                            isBooked: { type: Boolean, default: true }, // always true here because it's in bookedDates
                         },
                     ],
                 },

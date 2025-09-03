@@ -1,13 +1,19 @@
 const mongoose = require("mongoose");
 
-// ---- utils --------------------------------------------------------------
+/** ——— Helpers ——— */
 function toUTCDateOnly(input) {
     const d = new Date(input);
-    if (Number.isNaN(d.getTime())) return d; // let Mongoose throw required error
-    // normalize to 00:00:00 UTC (date-only semantics)
+    if (Number.isNaN(d.getTime())) return d;
     return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 }
 
+const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/; // "HH:mm" 24h
+function toMinutes(hhmm) {
+    const [h, m] = hhmm.split(":").map(Number);
+    return h * 60 + m;
+}
+
+/** ——— Line Items (unchanged) ——— */
 const lineItemSchema = new mongoose.Schema(
     {
         variant: { type: mongoose.Schema.ObjectId, ref: "ServiceVariant", required: true },
@@ -15,83 +21,112 @@ const lineItemSchema = new mongoose.Schema(
         unit: { type: String, required: true },
         quantity: { type: Number, required: true, min: 1 },
         unitPrice: { type: Number, required: true, min: 0 },
-
-        // For slot-based bookings
-        isSlotBased: { type: Boolean, default: false },
-        slot: {
-            startTime: { type: String }, // "16:00"
-            endTime: { type: String }, // "22:00"
-        },
     },
     { _id: false }
 );
 
+/** ——— Booking ———
+ * No payment fields. Totals are computed from items, but there's no payment state.
+ * Slot stores a reference to the vendor-defined slot template (availability.slots._id)
+ * plus a snapshot of start/end times for audit/history.
+ */
 const bookingSchema = new mongoose.Schema(
     {
-        // ---- WHO ----------------------------------------------------------
         user: { type: mongoose.Schema.ObjectId, ref: "User", required: true },
         userName: { type: String, required: true },
         userEmail: { type: String, required: true },
-        vendor: { type: mongoose.Schema.ObjectId, ref: "User", required: true },
 
-        // ---- WHAT ----------------------------------------------------------
+        vendor: { type: mongoose.Schema.ObjectId, ref: "User", required: true },
         service: { type: mongoose.Schema.ObjectId, ref: "Service", required: true },
+
         message: { type: String, maxlength: 500 },
 
-        // ---- WHEN (date-only semantics) -----------------------------------
-        date: { type: Date, required: [true, "Please provide a booking date"] },
+        // normalized to UTC 00:00 for the booking day
+        date: { type: Date, required: true },
 
-        // ---- STATUS --------------------------------------------------------
+        // Slot info (present when service is slot-based)
+        slot: {
+            slotId: { type: mongoose.Schema.Types.ObjectId }, // refs Service.availability.slots._id
+            startTime: {
+                type: String,
+                validate: {
+                    validator: (v) => (v == null ? true : TIME_RE.test(v)),
+                    message: "slot.startTime must be in HH:mm (24h) format",
+                },
+            },
+            endTime: {
+                type: String,
+                validate: {
+                    validator: (v) => (v == null ? true : TIME_RE.test(v)),
+                    message: "slot.endTime must be in HH:mm (24h) format",
+                },
+            },
+        },
+
         status: {
             type: String,
             enum: ["pending", "confirmed", "cancelled", "completed"],
             default: "pending",
         },
-        paymentStatus: { type: String, enum: ["pending", "paid", "refunded"], default: "pending" },
 
-        // ---- LINE-ITEMS & TOTALS ------------------------------------------
-        items: { type: [lineItemSchema], validate: (v) => Array.isArray(v) && v.length > 0 },
+        // Pricing snapshot (no payment state)
+        items: {
+            type: [lineItemSchema],
+            validate: (v) => Array.isArray(v) && v.length > 0,
+        },
         subTotal: { type: Number, default: 0 },
         tax: { type: Number, default: 0 },
         grandTotal: { type: Number, default: 0 },
-
-        // ---- legacy flat amount -------------------------------------------
-        amount: { type: Number, required: true },
-
-        createdAt: { type: Date, default: Date.now },
+        amount: { type: Number, default: 0 }, // mirrors grandTotal; not required
     },
     { timestamps: true }
 );
 
-// -------------------- AUTO-CALC TOTALS ---------------------------------
+/** ——— Totals (no payment) ——— */
 function calcTotals(doc) {
     if (!doc.items || !doc.items.length) return;
     doc.subTotal = doc.items.reduce((sum, it) => sum + it.quantity * it.unitPrice, 0);
-    doc.tax = Math.round(doc.subTotal * 0.18); // GST 18% example
+    doc.tax = Math.round(doc.subTotal * 0.18); // adjust later if you want dynamic tax
     doc.grandTotal = doc.subTotal + doc.tax;
-    doc.amount = doc.grandTotal; // keep legacy field synced
+    doc.amount = doc.grandTotal;
 }
 
-// Normalize date to UTC midnight & enforce slot rules
+/** ——— Hooks ——— */
 bookingSchema.pre("validate", function (next) {
+    // normalize booking date to UTC midnight
     if (this.date) this.date = toUTCDateOnly(this.date);
 
-    // Business rule: at most ONE slot-based item per booking
-    const slotItems = (this.items || []).filter((i) => i.isSlotBased);
-    if (slotItems.length > 1) {
-        return next(new Error("Only one slot-based item is allowed per booking."));
+    // if slot provided, ensure logical time order
+    if (this.slot && this.slot.startTime && this.slot.endTime) {
+        const a = toMinutes(this.slot.startTime);
+        const b = toMinutes(this.slot.endTime);
+        if (a >= b) {
+            return next(new Error("slot.startTime must be before slot.endTime"));
+        }
     }
-    next();
-});
 
-bookingSchema.pre("save", function (next) {
+    // compute totals before validation finishes (amount isn't required anyway)
     calcTotals(this);
     next();
 });
-bookingSchema.pre("updateOne", function (next) {
-    const set = this.getUpdate()?.$set || {};
-    if (set.items) calcTotals(set);
-    next();
-});
+
+/** ——— Indexes ———
+ * Prevent double booking the same service+date+slot.
+ * Works only when slot.slotId exists (slot-based services),
+ * and does NOT affect non-slot-based bookings.
+ */
+bookingSchema.index(
+    { service: 1, date: 1, "slot.slotId": 1 },
+    {
+        unique: true,
+        partialFilterExpression: { "slot.slotId": { $exists: true } },
+        name: "uniq_service_date_slot",
+    }
+);
+
+// helpful query indexes
+bookingSchema.index({ vendor: 1, createdAt: -1 });
+bookingSchema.index({ user: 1, createdAt: -1 });
+bookingSchema.index({ service: 1, date: 1 });
 
 module.exports = mongoose.model("Booking", bookingSchema);
