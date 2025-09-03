@@ -54,6 +54,7 @@ exports.createService = async (req, res, next) => {
             variants: rawVariants,
             isSlotBased,
             slots, // vendor-provided slots [{startTime:"09:00",endTime:"13:00"},...]
+            maxBookingsPerDay,
         } = req.body;
 
         let tags = req.body.tags;
@@ -168,6 +169,16 @@ exports.createService = async (req, res, next) => {
             if (!isValidSlots) {
                 return next(new ErrorResponse("Each slot must have startTime and endTime", 400));
             }
+        } else {
+            // Non-slot-based → require maxBookingsPerDay
+            if (!maxBookingsPerDay) {
+                return next(
+                    new ErrorResponse("Non-slot-based services must provide maxBookingsPerDay", 400)
+                );
+            }
+            if (isNaN(maxBookingsPerDay) || Number(maxBookingsPerDay) <= 0) {
+                return next(new ErrorResponse("maxBookingsPerDay must be a positive number", 400));
+            }
         }
 
         const service = await Service.create({
@@ -190,6 +201,7 @@ exports.createService = async (req, res, next) => {
             availability: {
                 isSlotBased: isSlotBasedBool,
                 slots: parsedSlots, // vendor-defined slots
+                maxBookingsPerDay: isSlotBasedBool ? undefined : Number(maxBookingsPerDay),
                 bookedDates: [], // empty initially
             },
         });

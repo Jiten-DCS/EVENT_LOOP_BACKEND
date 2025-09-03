@@ -26,9 +26,8 @@ exports.createBooking = async (req, res, next) => {
             message,
             totalPrice,
             variants = [],
-            slotId, // 👈 client sends slotId when slot-based service
+            slotId,
         } = req.body;
-        console.log('slotId',slotId)
 
         // --- required field validation
         const required = { service, name, email, phone, date };
@@ -36,8 +35,8 @@ exports.createBooking = async (req, res, next) => {
             if (!value) return next(new ErrorResponse(`Missing required field: ${field}`, 400));
         }
 
+        // --- fetch service
         const serviceDoc = await Service.findById(service).populate("vendor");
-        console.log('serviceDoc',serviceDoc)
         if (!serviceDoc) return next(new ErrorResponse("Service not found", 404));
 
         const vendor = await User.findById(serviceDoc.vendor._id);
@@ -45,17 +44,19 @@ exports.createBooking = async (req, res, next) => {
             return next(new ErrorResponse("Vendor not available", 404));
         }
 
+        // --- normalize date (midnight UTC)
         const bookingDate = new Date(date);
         bookingDate.setUTCHours(0, 0, 0, 0);
+
         if (bookingDate <= new Date()) {
             return next(new ErrorResponse("Booking date must be in the future", 400));
         }
 
+        // --- variants validation
         if (!Array.isArray(variants) || variants.length === 0) {
             return next(new ErrorResponse("At least one variant must be selected", 400));
         }
 
-        // --- build items & calculate totals
         const bookingItems = [];
         let calculatedTotal = 0;
 
@@ -75,16 +76,15 @@ exports.createBooking = async (req, res, next) => {
             calculatedTotal += variant.price * item.quantity;
         }
 
-        // --- slot logic
+        // --- availability logic
         let slotInfo = null;
 
         if (serviceDoc.availability?.isSlotBased) {
-            // ✅ FIX HERE
+            // SLOT BASED
             if (!slotId) {
                 return next(new ErrorResponse("Slot is required for this service", 400));
             }
 
-            // find slot template in service.availability.slots
             const slotTemplate = serviceDoc.availability?.slots?.find(
                 (s) => s._id.toString() === slotId
             );
@@ -92,7 +92,6 @@ exports.createBooking = async (req, res, next) => {
                 return next(new ErrorResponse("Invalid slot selected", 400));
             }
 
-            // check if already booked (status other than cancelled)
             const alreadyBooked = await Booking.exists({
                 service,
                 date: bookingDate,
@@ -109,32 +108,32 @@ exports.createBooking = async (req, res, next) => {
                 );
             }
 
-            // snapshot slot info into booking
             slotInfo = {
                 slotId: slotTemplate._id,
                 startTime: slotTemplate.startTime,
                 endTime: slotTemplate.endTime,
             };
         } else {
-            // non-slot-based booking capacity check
+            // NON-SLOT-BASED: enforce maxBookingsPerDay
             const existingBookings = await Booking.countDocuments({
                 service,
                 date: bookingDate,
                 status: { $ne: "cancelled" },
             });
+
             const maxBookings = serviceDoc.availability?.maxBookingsPerDay || 1;
+
             if (existingBookings >= maxBookings) {
                 return next(new ErrorResponse("No bookings available for this date", 400));
             }
         }
 
+        // --- totals
         if (calculatedTotal !== totalPrice) {
             return next(new ErrorResponse("Price calculation mismatch", 400));
         }
         const tax = Math.round(calculatedTotal * 0.18);
         const grandTotal = calculatedTotal + tax;
-
-
 
         // --- create booking
         const booking = await Booking.create({
@@ -154,7 +153,7 @@ exports.createBooking = async (req, res, next) => {
             status: "confirmed",
         });
 
-        // optional: notify vendor
+        // --- notify vendor
         await sendEmail({
             email: vendor.email,
             subject: "New Booking Confirmed",
@@ -173,6 +172,7 @@ exports.createBooking = async (req, res, next) => {
         next(err);
     }
 };
+
 
 // @desc    Get vendor's bookings
 // @route   GET /api/bookings/vendor/:id

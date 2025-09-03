@@ -87,6 +87,13 @@ const serviceSchema = new mongoose.Schema(
                 },
             ],
 
+            // For non-slot-based services
+            maxBookingsPerDay: {
+                type: Number,
+                min: [1, "At least 1 booking must be allowed"],
+                default: 1,
+            },
+
             // Bookings per date
             bookedDates: [
                 {
