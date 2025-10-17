@@ -15,10 +15,6 @@ const {
   forgotPassword,
   resetPassword,
   verifyRegistration, // Updated controller
-  sendOTP, // Updated controller
-  verifyOTP, // Updated controller
-  resendLoginOTP, // New function
-  verifyLoginOTP, // New function
 } = require("../controllers/auth.Controller");
 const {
   protect,
@@ -37,11 +33,11 @@ router.post(
   uploadSingleImage,
   register
 );
-router.post("/login", rateLimiter(5, 10 * 60 * 1000), login);
+router.post("/login",  login);
 
 // New routes for login phone verification
-router.post("/resend-login-otp", resendLoginOTP);
-router.post("/verify-login-otp", verifyLoginOTP);
+// router.post("/resend-login-otp", resendLoginOTP);
+// router.post("/verify-login-otp", verifyLoginOTP);
 
 // OTP Verification routes (Updated for Twilio SMS)
 router.post(
@@ -49,8 +45,8 @@ router.post(
   rateLimiter(3, 5 * 60 * 1000),
   verifyRegistration
 ); // Rate limit: 3 attempts per 5 minutes
-router.post("/send-otp", rateLimiter(3, 5 * 60 * 1000), sendOTP); // Rate limit: 3 attempts per 5 minutes
-router.post("/verify-otp", rateLimiter(5, 10 * 60 * 1000), verifyOTP); // Rate limit: 5 attempts per 10 minutes
+// router.post("/send-otp", rateLimiter(3, 5 * 60 * 1000), sendOTP); // Rate limit: 3 attempts per 5 minutes
+// router.post("/verify-otp", rateLimiter(5, 10 * 60 * 1000), verifyOTP); // Rate limit: 5 attempts per 10 minutes
 
 // Protected routes (All authenticated users)
 router.get("/logout", logout);

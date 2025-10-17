@@ -20,7 +20,7 @@
     "cloudinary",
     "razorpay"
   ],
-  "author": "Jitu Mohanty",
+  "author": "Raj kumar Mohanty",
   "license": "ISC",
   "dependencies": {
     "bcryptjs": "^3.0.2",

@@ -79,7 +79,7 @@ const bookingSchema = new mongoose.Schema(
         grandTotal: { type: Number, default: 0 },
         amount: { type: Number, default: 0 }, // mirrors grandTotal; not required
     },
-    { timestamps: true }
+    { timestamps: true, expireAfterSeconds: undefined}
 );
 
 /** ——— Totals (no payment) ——— */

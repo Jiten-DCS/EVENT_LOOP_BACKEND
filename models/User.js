@@ -18,7 +18,6 @@ const userSchema = new mongoose.Schema({
   },
   phoneNumber: {
     type: String,
-    // required: [true, 'Please provide a phone number'],
     unique: true,
     validate: {
       validator: function(v) {
@@ -84,29 +83,6 @@ const userSchema = new mongoose.Schema({
     type: mongoose.Schema.ObjectId,
     ref: 'Service'
   }],
-  // Password reset fields
-  passwordResetOtp: String,
-  passwordResetExpires: Date,
-  // Phone verification fields
-  phoneNumberVerified: {
-    type: Boolean,
-    default: false
-  },
-  // Updated Twilio SMS verification fields
-  phoneVerificationOtp: {
-    type: String,
-    select: false
-  },
-  phoneVerificationExpires: {
-    type: Date,
-    select: false
-  },
-  phoneVerificationAttempts: {
-    type: Number,
-    default: 0,
-    max: [5, 'Maximum verification attempts reached']
-  },
-  phoneVerificationBlockedUntil: Date,
   isBlocked: {
     type: Boolean,
     default: false
@@ -166,11 +142,6 @@ userSchema.methods.comparePassword = async function(candidatePassword, userPassw
 userSchema.methods.isPhoneVerificationBlocked = function() {
   return this.phoneVerificationBlockedUntil && this.phoneVerificationBlockedUntil > Date.now();
 };
-
-// Virtual for formatted phone number
-// userSchema.virtual('formattedPhone').get(function() {
-//   return `+${this.phoneNumber.replace(/\D/g, '')}`;
-// });
 
 
 module.exports = mongoose.model('User', userSchema);

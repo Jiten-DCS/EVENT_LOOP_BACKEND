@@ -32,49 +32,26 @@ exports.register = async (req, res, next) => {
         if (req.file) {
             profilePhoto = req.file.path;
         }
-
-        // Generate 6-digit OTP
-        const otp = crypto.randomInt(100000, 999999).toString();
-        const otpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
-
-        // First try to send OTP via Twilio before creating user
-        // try {
-        //   await client.messages.create({
-        //     body: `Your verification code is: ${otp}. Valid for 10 minutes.`,
-        //     from: process.env.TWILIO_PHONE_NUMBER,
-        //     to: phoneNumber,
-        //   });
-        // } catch (twilioError) {
-        //   console.error("Twilio error:", twilioError);
-        //   return next(
-        //     new ErrorResponse(
-        //       "Failed to send verification SMS. Please check your phone number.",
-        //       400
-        //     )
-        //   );
-        // }
-
-        // Create user only after successful SMS sending
+        // Create new user
         const user = await User.create({
             name,
             email,
             password,
             role,
             phoneNumber,
-            phoneNumberVerified: false,
-            phoneVerificationOtp: otp,
-            phoneVerificationExpires: otpExpires,
             category: role === "vendor" ? category : undefined,
             businessName: role === "vendor" ? businessName : undefined,
             profilePhoto,
-            isApproved: role === "vendor" ? false : true,
+            isApproved: role === "vendor" ? false : true, // Vendors need admin approval
         });
 
-        res.status(200).json({
+        res.status(201).json({
             success: true,
-            message: "User registered successfully. OTP sent to your phone number.",
-            userId: user._id,
-            phoneNumber: user.phoneNumber,
+            message:
+                role === "vendor"
+                    ? "Vendor registered successfully. Awaiting admin approval."
+                    : "User registered successfully.",
+            data: user,
         });
     } catch (err) {
         next(err);
@@ -83,30 +60,124 @@ exports.register = async (req, res, next) => {
 
 // Updated verifyRegistration function
 exports.verifyRegistration = async (req, res, next) => {
-    const { userId, otp } = req.body;
-
     try {
-        // Find the unverified user with valid OTP
-        const user = await User.findOne({
-            _id: userId,
-            phoneNumberVerified: false,
-            phoneVerificationOtp: otp,
-            phoneVerificationExpires: { $gt: Date.now() },
-        });
+        const { userId, isApproved } = req.body;
 
+        const user = await User.findById(userId);
         if (!user) {
-            return next(new ErrorResponse("Invalid OTP or OTP has expired", 400));
+            return next(new ErrorResponse("User not found", 404));
         }
 
-        // Mark user as verified and clear OTP fields
-        user.phoneNumberVerified = true;
-        user.phoneVerificationOtp = undefined;
-        user.phoneVerificationExpires = undefined;
-        user.phoneVerificationAttempts = 0;
+        if (user.role !== "vendor") {
+            return next(new ErrorResponse("Only vendors can be verified", 400));
+        }
+
+        user.isApproved = isApproved;
         await user.save();
 
-        // Log the user in by sending token
+        res.status(200).json({
+            success: true,
+            message: isApproved ? "Vendor approved successfully." : "Vendor rejected successfully.",
+            user,
+        });
+    } catch (err) {
+        next(err);
+    }
+};
+
+// @desc    Login user
+// @route   POST /api/auth/login
+// @access  Public
+exports.login = async (req, res, next) => {
+    const { email, password } = req.body;
+
+    try {
+        if (!email || !password) {
+            return next(new ErrorResponse("Please provide email and password", 400));
+        }
+
+        // Find user and include password for comparison
+        const user = await User.findOne({ email }).select("+password");
+        if (!user) {
+            return next(new ErrorResponse("Invalid credentials", 401));
+        }
+
+        // Compare password
+        const isMatch = await user.comparePassword(password, user.password);
+        if (!isMatch) {
+            return next(new ErrorResponse("Invalid credentials", 401));
+        }
+
+        // Blocked user check
+        if (user.isBlocked) {
+            const blockInfo = user.blockDetails || {};
+            return next(
+                new ErrorResponse(
+                    `Your account has been blocked. Reason: ${
+                        blockInfo.reason || "Not specified"
+                    }.`,
+                    403
+                )
+            );
+        }
+
+        // Vendor approval check
+        if (user.role === "vendor" && !user.isApproved) {
+            return res.status(403).json({
+                success: false,
+                message:
+                    "Your vendor account is pending admin approval. You will be notified once approved.",
+                isVendorPendingApproval: true,
+            });
+        }
+
+        // Success login
         createSendToken(user, 200, res);
+    } catch (err) {
+        console.error("Login error:", err);
+        next(new ErrorResponse("Login failed. Please try again later.", 500));
+    }
+};
+
+// @desc    Approve/Reject vendor (Admin only)
+// @route   PUT /api/auth/users/:id/approval
+// @access  Private/Admin
+exports.updateVendorApproval = async (req, res, next) => {
+    try {
+        const { isApproved } = req.body;
+
+        const user = await User.findById(req.params.id);
+
+        if (!user) {
+            return next(new ErrorResponse("User not found", 404));
+        }
+
+        if (user.role !== "vendor") {
+            return next(new ErrorResponse("User is not a vendor", 400));
+        }
+
+        user.isApproved = isApproved;
+        await user.save();
+
+        // Send notification email
+        const message = isApproved
+            ? `Congratulations! Your vendor account has been approved. You can now start offering your services.`
+            : `We're sorry, but your vendor account application has been rejected. Please contact support for more information.`;
+
+        await sendEmail({
+            email: user.email,
+            subject: isApproved ? "Vendor Account Approved" : "Vendor Account Rejected",
+            html: vendorApprovalStatusTemplate({
+                vendorName: user.name,
+                isApproved,
+                companyLogoUrl: "https://your-cloudinary-url.com/company-logo.png",
+            }),
+        });
+
+        res.status(200).json({
+            success: true,
+            data: user,
+        });
     } catch (err) {
         next(err);
     }
@@ -115,283 +186,234 @@ exports.verifyRegistration = async (req, res, next) => {
 // @desc    Resend OTP for login verification
 // @route   POST /api/auth/resend-login-otp
 // @access  Public
-exports.resendLoginOTP = async (req, res, next) => {
-    const { phoneNumber } = req.body;
+// exports.resendLoginOTP = async (req, res, next) => {
+//     const { phoneNumber } = req.body;
 
-    try {
-        // Validate phone number
-        if (!phoneNumber) {
-            return next(new ErrorResponse("Phone number is required", 400));
-        }
+//     try {
+//         // Validate phone number
+//         if (!phoneNumber) {
+//             return next(new ErrorResponse("Phone number is required", 400));
+//         }
 
-        // Find user by phone number
-        const user = await User.findOne({ phoneNumber });
-        if (!user) {
-            return next(new ErrorResponse("User not found with this phone number", 404));
-        }
+//         // Find user by phone number
+//         const user = await User.findOne({ phoneNumber });
+//         if (!user) {
+//             return next(new ErrorResponse("User not found with this phone number", 404));
+//         }
 
-        // Check if user is already verified
-        if (user.phoneNumberVerified) {
-            return next(new ErrorResponse("Phone number already verified", 400));
-        }
+//         // Check if user is already verified
+//         if (user.phoneNumberVerified) {
+//             return next(new ErrorResponse("Phone number already verified", 400));
+//         }
 
-        // Check if user is blocked from verification attempts
-        if (user.phoneVerificationBlockedUntil && user.phoneVerificationBlockedUntil > Date.now()) {
-            const timeLeft = Math.ceil(
-                (user.phoneVerificationBlockedUntil - Date.now()) / (1000 * 60)
-            );
-            return next(
-                new ErrorResponse(`Too many attempts. Try again in ${timeLeft} minutes`, 429)
-            );
-        }
+//         // Check if user is blocked from verification attempts
+//         if (user.phoneVerificationBlockedUntil && user.phoneVerificationBlockedUntil > Date.now()) {
+//             const timeLeft = Math.ceil(
+//                 (user.phoneVerificationBlockedUntil - Date.now()) / (1000 * 60)
+//             );
+//             return next(
+//                 new ErrorResponse(`Too many attempts. Try again in ${timeLeft} minutes`, 429)
+//             );
+//         }
 
-        // Generate new OTP
-        const otp = crypto.randomInt(100000, 999999).toString();
-        const otpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+//         // Generate new OTP
+//         const otp = crypto.randomInt(100000, 999999).toString();
+//         const otpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
 
-        // Send OTP via Twilio first
-        try {
-            await client.messages.create({
-                body: `Your login verification code is: ${otp}. Valid for 10 minutes.`,
-                from: process.env.TWILIO_PHONE_NUMBER,
-                to: phoneNumber,
-            });
-        } catch (twilioError) {
-            console.error("Twilio error:", twilioError);
-            return next(
-                new ErrorResponse("Failed to send verification SMS. Please try again.", 500)
-            );
-        }
+//         // Send OTP via Twilio first
+//         try {
+//             await client.messages.create({
+//                 body: `Your login verification code is: ${otp}. Valid for 10 minutes.`,
+//                 from: process.env.TWILIO_PHONE_NUMBER,
+//                 to: phoneNumber,
+//             });
+//         } catch (twilioError) {
+//             console.error("Twilio error:", twilioError);
+//             return next(
+//                 new ErrorResponse("Failed to send verification SMS. Please try again.", 500)
+//             );
+//         }
 
-        // Update user with new OTP only after successful SMS
-        user.phoneVerificationOtp = otp;
-        user.phoneVerificationExpires = otpExpires;
-        await user.save();
+//         // Update user with new OTP only after successful SMS
+//         user.phoneVerificationOtp = otp;
+//         user.phoneVerificationExpires = otpExpires;
+//         await user.save();
 
-        res.status(200).json({
-            success: true,
-            message: "Verification OTP sent successfully to your phone number",
-            userId: user._id,
-            phoneNumber: user.phoneNumber,
-        });
-    } catch (err) {
-        console.error("Error sending login OTP:", err);
-        next(new ErrorResponse("Failed to send OTP", 500));
-    }
-};
+//         res.status(200).json({
+//             success: true,
+//             message: "Verification OTP sent successfully to your phone number",
+//             userId: user._id,
+//             phoneNumber: user.phoneNumber,
+//         });
+//     } catch (err) {
+//         console.error("Error sending login OTP:", err);
+//         next(new ErrorResponse("Failed to send OTP", 500));
+//     }
+// };
 
 // @desc    Verify OTP for login
 // @route   POST /api/auth/verify-login-otp
 // @access  Public
-exports.verifyLoginOTP = async (req, res, next) => {
-    const { phoneNumber, otp } = req.body;
+// exports.verifyLoginOTP = async (req, res, next) => {
+//     const { phoneNumber, otp } = req.body;
 
-    try {
-        // Basic validation
-        if (!phoneNumber || !otp) {
-            return next(new ErrorResponse("Phone number and OTP are required", 400));
-        }
+//     try {
+//         // Basic validation
+//         if (!phoneNumber || !otp) {
+//             return next(new ErrorResponse("Phone number and OTP are required", 400));
+//         }
 
-        // Find user with valid OTP
-        const user = await User.findOne({
-            phoneNumber,
-            phoneVerificationOtp: otp,
-            phoneVerificationExpires: { $gt: Date.now() },
-        });
+//         // Find user with valid OTP
+//         const user = await User.findOne({
+//             phoneNumber,
+//             phoneVerificationOtp: otp,
+//             phoneVerificationExpires: { $gt: Date.now() },
+//         });
 
-        if (!user) {
-            // Increment failed attempts for rate limiting
-            const existingUser = await User.findOne({ phoneNumber });
-            if (existingUser) {
-                existingUser.phoneVerificationAttempts =
-                    (existingUser.phoneVerificationAttempts || 0) + 1;
+//         if (!user) {
+//             // Increment failed attempts for rate limiting
+//             const existingUser = await User.findOne({ phoneNumber });
+//             if (existingUser) {
+//                 existingUser.phoneVerificationAttempts =
+//                     (existingUser.phoneVerificationAttempts || 0) + 1;
 
-                // Block user after 3 failed attempts
-                if (existingUser.phoneVerificationAttempts >= 3) {
-                    existingUser.phoneVerificationBlockedUntil = Date.now() + 5 * 60 * 1000; // 5 minutes
-                }
+//                 // Block user after 3 failed attempts
+//                 if (existingUser.phoneVerificationAttempts >= 3) {
+//                     existingUser.phoneVerificationBlockedUntil = Date.now() + 5 * 60 * 1000; // 5 minutes
+//                 }
 
-                await existingUser.save();
-            }
+//                 await existingUser.save();
+//             }
 
-            return next(new ErrorResponse("Invalid or expired OTP", 400));
-        }
+//             return next(new ErrorResponse("Invalid or expired OTP", 400));
+//         }
 
-        // Mark as verified and clear OTP fields
-        user.phoneNumberVerified = true;
-        user.phoneVerificationOtp = undefined;
-        user.phoneVerificationExpires = undefined;
-        user.phoneVerificationAttempts = 0;
-        user.phoneVerificationBlockedUntil = undefined;
-        await user.save();
+//         // Mark as verified and clear OTP fields
+//         user.phoneNumberVerified = true;
+//         user.phoneVerificationOtp = undefined;
+//         user.phoneVerificationExpires = undefined;
+//         user.phoneVerificationAttempts = 0;
+//         user.phoneVerificationBlockedUntil = undefined;
+//         await user.save();
 
-        // Check if vendor is approved before logging in
-        if (user.role === "vendor" && !user.isApproved) {
-            return next(new ErrorResponse("Your account is pending approval", 401));
-        }
+//         // Check if vendor is approved before logging in
+//         if (user.role === "vendor" && !user.isApproved) {
+//             return next(new ErrorResponse("Your account is pending approval", 401));
+//         }
 
-        // Log the user in by sending token
-        createSendToken(user, 200, res);
-    } catch (err) {
-        console.error("Error verifying login OTP:", err);
-        next(new ErrorResponse("Failed to verify OTP", 500));
-    }
-};
+//         // Log the user in by sending token
+//         createSendToken(user, 200, res);
+//     } catch (err) {
+//         console.error("Error verifying login OTP:", err);
+//         next(new ErrorResponse("Failed to verify OTP", 500));
+//     }
+// };
 
 // Updated sendOTP function (for resending OTP)
-exports.sendOTP = async (req, res, next) => {
-    const { phoneNumber } = req.body;
+// exports.sendOTP = async (req, res, next) => {
+//     const { phoneNumber } = req.body;
 
-    try {
-        // Find user by phone number
-        const user = await User.findOne({ phoneNumber });
-        if (!user) {
-            return next(new ErrorResponse("User not found", 404));
-        }
+//     try {
+//         // Find user by phone number
+//         const user = await User.findOne({ phoneNumber });
+//         if (!user) {
+//             return next(new ErrorResponse("User not found", 404));
+//         }
 
-        // Check if user is already verified
-        if (user.phoneNumberVerified) {
-            return next(new ErrorResponse("Phone number already verified", 400));
-        }
+//         // Check if user is already verified
+//         if (user.phoneNumberVerified) {
+//             return next(new ErrorResponse("Phone number already verified", 400));
+//         }
 
-        // Check if user is blocked from verification attempts
-        if (user.phoneVerificationBlockedUntil && user.phoneVerificationBlockedUntil > Date.now()) {
-            const timeLeft = Math.ceil(
-                (user.phoneVerificationBlockedUntil - Date.now()) / (1000 * 60)
-            );
-            return next(
-                new ErrorResponse(`Too many attempts. Try again in ${timeLeft} minutes`, 429)
-            );
-        }
+//         // Check if user is blocked from verification attempts
+//         if (user.phoneVerificationBlockedUntil && user.phoneVerificationBlockedUntil > Date.now()) {
+//             const timeLeft = Math.ceil(
+//                 (user.phoneVerificationBlockedUntil - Date.now()) / (1000 * 60)
+//             );
+//             return next(
+//                 new ErrorResponse(`Too many attempts. Try again in ${timeLeft} minutes`, 429)
+//             );
+//         }
 
-        // Generate new OTP
-        const otp = crypto.randomInt(100000, 999999).toString();
-        const otpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+//         // Generate new OTP
+//         const otp = crypto.randomInt(100000, 999999).toString();
+//         const otpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
 
-        // Update user with new OTP
-        user.phoneVerificationOtp = otp;
-        user.phoneVerificationExpires = otpExpires;
-        await user.save();
+//         // Update user with new OTP
+//         user.phoneVerificationOtp = otp;
+//         user.phoneVerificationExpires = otpExpires;
+//         await user.save();
 
-        // Send OTP via Twilio
-        await client.messages.create({
-            body: `Your verification code is: ${otp}. Valid for 10 minutes.`,
-            from: process.env.TWILIO_PHONE_NUMBER,
-            to: phoneNumber,
-        });
+//         // Send OTP via Twilio
+//         await client.messages.create({
+//             body: `Your verification code is: ${otp}. Valid for 10 minutes.`,
+//             from: process.env.TWILIO_PHONE_NUMBER,
+//             to: phoneNumber,
+//         });
 
-        res.status(200).json({
-            success: true,
-            message: "OTP sent successfully",
-        });
-    } catch (err) {
-        console.error("Error sending OTP:", err);
-        next(new ErrorResponse("Failed to send OTP", 500));
-    }
-};
+//         res.status(200).json({
+//             success: true,
+//             message: "OTP sent successfully",
+//         });
+//     } catch (err) {
+//         console.error("Error sending OTP:", err);
+//         next(new ErrorResponse("Failed to send OTP", 500));
+//     }
+// };
 
 // Updated verifyOTP function
-exports.verifyOTP = async (req, res, next) => {
-    const { phoneNumber, otp } = req.body;
+// exports.verifyOTP = async (req, res, next) => {
+//     const { phoneNumber, otp } = req.body;
 
-    try {
-        // Basic validation
-        if (!phoneNumber || !otp) {
-            return next(new ErrorResponse("Phone number and OTP are required", 400));
-        }
+//     try {
+//         // Basic validation
+//         if (!phoneNumber || !otp) {
+//             return next(new ErrorResponse("Phone number and OTP are required", 400));
+//         }
 
-        // Find user with valid OTP
-        const user = await User.findOne({
-            phoneNumber,
-            phoneVerificationOtp: otp,
-            phoneVerificationExpires: { $gt: Date.now() },
-        });
+//         // Find user with valid OTP
+//         const user = await User.findOne({
+//             phoneNumber,
+//             phoneVerificationOtp: otp,
+//             phoneVerificationExpires: { $gt: Date.now() },
+//         });
 
-        if (!user) {
-            // Increment failed attempts
-            await User.findOneAndUpdate(
-                { phoneNumber },
-                {
-                    $inc: { phoneVerificationAttempts: 1 },
-                    $set: {
-                        phoneVerificationBlockedUntil:
-                            user?.phoneVerificationAttempts >= 2
-                                ? Date.now() + 5 * 60 * 1000
-                                : undefined, // Block for 5 minutes after 3 attempts
-                    },
-                }
-            );
+//         if (!user) {
+//             // Increment failed attempts
+//             await User.findOneAndUpdate(
+//                 { phoneNumber },
+//                 {
+//                     $inc: { phoneVerificationAttempts: 1 },
+//                     $set: {
+//                         phoneVerificationBlockedUntil:
+//                             user?.phoneVerificationAttempts >= 2
+//                                 ? Date.now() + 5 * 60 * 1000
+//                                 : undefined, // Block for 5 minutes after 3 attempts
+//                     },
+//                 }
+//             );
 
-            return next(new ErrorResponse("Invalid or expired OTP", 400));
-        }
+//             return next(new ErrorResponse("Invalid or expired OTP", 400));
+//         }
 
-        // Mark as verified and clear OTP fields
-        user.phoneNumberVerified = true;
-        user.phoneVerificationOtp = undefined;
-        user.phoneVerificationExpires = undefined;
-        user.phoneVerificationAttempts = 0;
-        user.phoneVerificationBlockedUntil = undefined;
-        await user.save();
+//         // Mark as verified and clear OTP fields
+//         user.phoneNumberVerified = true;
+//         user.phoneVerificationOtp = undefined;
+//         user.phoneVerificationExpires = undefined;
+//         user.phoneVerificationAttempts = 0;
+//         user.phoneVerificationBlockedUntil = undefined;
+//         await user.save();
 
-        res.status(200).json({
-            success: true,
-            message: "Phone number verified successfully",
-            data: user,
-        });
-    } catch (err) {
-        console.error("Error verifying OTP:", err);
-        next(new ErrorResponse("Failed to verify OTP", 500));
-    }
-};
-
-// @desc    Login user
-// @route   POST /api/auth/login
-// @access  Public
-exports.login = async (req, res, next) => {
-    const { email } = req.body;
-
-    try {
-        if (!email) {
-            return next(new ErrorResponse("Please provide an email", 400));
-        }
-
-        const user = await User.findOne({ email });
-        if (!user) {
-            return next(new ErrorResponse("No account found with this email", 404));
-        }
-
-        if (user.isBlocked) {
-            const blockInfo = user.blockDetails || {};
-            return next(
-                new ErrorResponse(
-                    `Your account has been blocked by admin. Reason: ${
-                        blockInfo.reason || "Not specified"
-                    }. Blocked on: ${
-                        blockInfo.blockedAt
-                            ? blockInfo.blockedAt.toLocaleString()
-                            : "Date not available"
-                    }. Please check your registered email for more details.`,
-                    403
-                )
-            );
-        }
-
-        if (user.role === "vendor" && !user.isApproved) {
-            return res.status(200).json({
-                success: false,
-                message:
-                    "Your vendor account is pending admin approval. You will be notified via email once approved.",
-                isVendorPendingApproval: true,
-            });
-        }
-
-        // No password check — directly send token
-        createSendToken(user, 200, res);
-    } catch (err) {
-        console.error("Error in login:", err);
-        next(new ErrorResponse("Login failed. Please try again later.", 500));
-    }
-};
+//         res.status(200).json({
+//             success: true,
+//             message: "Phone number verified successfully",
+//             data: user,
+//         });
+//     } catch (err) {
+//         console.error("Error verifying OTP:", err);
+//         next(new ErrorResponse("Failed to verify OTP", 500));
+//     }
+// };
 
 
 // @desc    Logout user
@@ -691,49 +713,6 @@ exports.deleteUser = async (req, res, next) => {
     }
 };
 
-// @desc    Approve/Reject vendor (Admin only)
-// @route   PUT /api/auth/users/:id/approval
-// @access  Private/Admin
-exports.updateVendorApproval = async (req, res, next) => {
-    try {
-        const { isApproved } = req.body;
-
-        const user = await User.findById(req.params.id);
-
-        if (!user) {
-            return next(new ErrorResponse("User not found", 404));
-        }
-
-        if (user.role !== "vendor") {
-            return next(new ErrorResponse("User is not a vendor", 400));
-        }
-
-        user.isApproved = isApproved;
-        await user.save();
-
-        // Send notification email
-        const message = isApproved
-            ? `Congratulations! Your vendor account has been approved. You can now start offering your services.`
-            : `We're sorry, but your vendor account application has been rejected. Please contact support for more information.`;
-
-        await sendEmail({
-            email: user.email,
-            subject: isApproved ? "Vendor Account Approved" : "Vendor Account Rejected",
-            html: vendorApprovalStatusTemplate({
-                vendorName: user.name,
-                isApproved,
-                companyLogoUrl: "https://your-cloudinary-url.com/company-logo.png",
-            }),
-        });
-
-        res.status(200).json({
-            success: true,
-            data: user,
-        });
-    } catch (err) {
-        next(err);
-    }
-};
 
 // @desc    Forgot password - Send OTP to email
 // @route   POST /api/auth/forgot-password

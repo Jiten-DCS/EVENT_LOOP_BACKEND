@@ -28,6 +28,9 @@ exports.createBooking = async (req, res, next) => {
             variants = [],
             slotId,
         } = req.body;
+        console.log(
+            "req.body",req.body
+        );
 
         // --- required field validation
         const required = { service, name, email, phone, date };
